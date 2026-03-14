@@ -1,0 +1,71 @@
+{
+  "agents": [
+    {
+      "agent_id": "aaf3fc249ac7b02f4",
+      "agent_type": "Explore",
+      "started_at": "2026-03-14T10:24:40.277Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-03-14T10:25:32.644Z",
+      "duration_ms": 52367
+    },
+    {
+      "agent_id": "a0b37446257beb998",
+      "agent_type": "Explore",
+      "started_at": "2026-03-14T10:24:45.415Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-03-14T10:25:22.144Z",
+      "duration_ms": 36729
+    },
+    {
+      "agent_id": "a309115f5786203a9",
+      "agent_type": "general-purpose",
+      "started_at": "2026-03-14T10:24:53.796Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-03-14T10:28:30.595Z",
+      "duration_ms": 216799
+    },
+    {
+      "agent_id": "a243a54ce845a31bf",
+      "agent_type": "Explore",
+      "started_at": "2026-03-14T10:33:10.565Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-03-14T10:35:05.266Z",
+      "duration_ms": 114701
+    },
+    {
+      "agent_id": "a379a369a767ec553",
+      "agent_type": "Explore",
+      "started_at": "2026-03-14T10:33:18.160Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-03-14T10:35:15.022Z",
+      "duration_ms": 116862
+    },
+    {
+      "agent_id": "a5cc9a707e2d3c44a",
+      "agent_type": "Explore",
+      "started_at": "2026-03-14T10:33:31.544Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-03-14T10:34:55.311Z",
+      "duration_ms": 83767
+    },
+    {
+      "agent_id": "ad84caa197a3e7491",
+      "agent_type": "general-purpose",
+      "started_at": "2026-03-14T11:24:31.271Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-03-14T11:25:48.089Z",
+      "duration_ms": 76818
+    }
+  ],
+  "total_spawned": 7,
+  "total_completed": 7,
+  "total_failed": 0,
+  "last_updated": "2026-03-14T11:25:48.190Z"
+}
