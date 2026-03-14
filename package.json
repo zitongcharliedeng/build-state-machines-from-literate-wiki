@@ -1,0 +1,21 @@
+{
+  "name": "build-state-machines-from-literate-wiki",
+  "version": "0.1.0",
+  "description": "Build and verify literate state machine wiki projects. Tangles .lit.md → source, locks generated files, enforces rules, discovers XState machines.",
+  "type": "module",
+  "bin": {
+    "lsmw": "./src/cli.ts"
+  },
+  "scripts": {
+    "build": "bun run src/cli.ts build .",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": ["literate-programming", "state-machine", "xstate", "wiki", "build-tool", "entangled"],
+  "license": "MIT",
+  "devDependencies": {
+    "typescript": "^5.3.3"
+  },
+  "peerDependencies": {
+    "xstate": "^5.0.0"
+  }
+}
