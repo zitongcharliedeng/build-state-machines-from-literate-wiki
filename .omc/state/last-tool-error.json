@@ -1,7 +1,0 @@
-{
-  "tool_name": "Read",
-  "tool_input_preview": "{\"file_path\":\"/home/firstinstallusername/01-THE_PRESENT/to\\\\ be\\\\ organised/openspec/changes/immutable-lifeos-enforcement-pyramid/design.md\"}",
-  "error": "File does not exist. Note: your current working directory is /home/firstinstallusername/literate-state-machine-wiki.",
-  "timestamp": "2026-03-14T10:34:46.746Z",
-  "retry_count": 3
-}
