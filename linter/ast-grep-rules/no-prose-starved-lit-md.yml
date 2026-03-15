@@ -1,0 +1,33 @@
+# Every .lit.md file must have meaningful prose, not just code blocks.
+# A file that is entirely code blocks is just a .ts file with extra syntax.
+# The value of literate programming is the prose that explains the code.
+#
+# This rule flags files where the only "prose" is the H1 title — no explanatory
+# paragraphs, no rationale, no cross-references.
+#
+# The threshold is intentionally low: 3 prose lines is enough to pass.
+# Use linter/check-lit-md.py for the actual enforcement since ast-grep
+# cannot count prose lines reliably.
+#
+# Worst offenders in gridinstruments:
+#   - literate/tests/machines/*.lit.md (all test machines, prose-starved)
+#   - literate/components/NumericSlider.lit.md
+#   - literate/ui-overrides.lit.md
+#
+# These are files that were migrated from .ts without adding prose — the
+# migration tool created the skeleton but the author didn't fill it in.
+id: no-prose-starved-lit-md
+language: markdown
+severity: warning
+message: "This .lit.md file has almost no prose — add explanatory text between code blocks"
+note: |
+  A .lit.md file with only a title and code blocks defeats the purpose of
+  literate programming. Add prose explaining:
+  - What this module does and why it exists
+  - Design decisions and tradeoffs
+  - How the pieces relate to each other
+  - Links to relevant issues, specs, or prior art
+rule:
+  regex: "^# .+"
+files:
+  - "**/*.lit.md"

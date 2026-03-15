@@ -78,6 +78,13 @@
               TOML
             ''}
 
+          # Remove stale filedb before tangling.
+          # If .entangled/filedb.json is git-tracked in the source repo, it will be
+          # copied into the sandbox with stale entries. Entangled treats files that are
+          # "in db but not on drive" as undead and skips regenerating them, even with
+          # --force. Deleting the filedb forces a clean tangle from scratch.
+          rm -f .entangled/filedb.json
+
           entangled tangle --force 2>&1
 
           mkdir -p $out
