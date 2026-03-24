@@ -1,0 +1,96 @@
+---
+title: Nix Config Module
+description: Default configuration values extracted from flake.nix — the shared constants every consumer of literate-state-machine-wiki needs
+tags: [nix, config, defaults, module]
+---
+
+# Nix Config Module
+
+This module answers one question: what are the defaults? Every consumer of literate-state-machine-wiki who builds a devshell or tangle derivation needs the same three things — a way to find the `entangled` binary for the right platform, a way to find a sane Python, and a way to find a sane Node.js. And every consumer who does not supply their own `entangled.toml` needs the same language table.
+
+Rather than copy these values into every flake that imports this library, they live here once. `lib/config.nix` is imported by `flake.nix` and passed to [[lib/devshell]] as its `config` argument.
+
+## Why a separate module rather than inline in flake.nix?
+
+`flake.nix` is the composition layer. It wires inputs to outputs. When the defaults for `entangled.toml` or the toolchain resolution helpers live directly in `flake.nix`, there is no way for a consumer to import just the defaults without importing the full flake machinery. Extracting them here makes the library usable as a plain nix module — `import ./lib/config.nix { lib = nixpkgs.lib; entangledInput = inputs.entangled; }` — without pulling in any derivation-building logic.
+
+## The entangled TOML default
+
+The `defaultEntangledToml` string is the standard language table for literate-state-machine-wiki projects. It registers comment annotation markers for every language the wiki commonly uses. The `~~ ` prefix on generated comments is how Entangled marks tangled lines so it can round-trip edits — never change this string without also updating all existing `.entangled/filedb.json` caches.
+
+The watch list covers both `.lit.md` (plain markdown) and `.lit.mdx` (MDX with JSX) extensions. Projects that only use one extension can override `entangled.toml` directly — this default is intentionally permissive.
+
+```{.nix file=lib/config.nix as-real-file-path="flake.nix imports this module"}
+{ lib, entangledInput }:
+{
+  defaultEntangledToml = ''
+    version = "2.0"
+    watch_list = ["**/*.lit.md", "**/*.lit.mdx"]
+    annotation = "standard"
+
+    [[lib/config]]
+    name = "TypeScript"
+    identifiers = ["ts", "typescript"]
+    comment = { open = "// ~~ " }
+
+    [[lib/config]]
+    name = "Nix"
+    identifiers = ["nix"]
+    comment = { open = "# ~~ " }
+
+    [[lib/config]]
+    name = "CSS"
+    identifiers = ["css"]
+    comment = { open = "/* ~~ ", close = " */" }
+
+    [[lib/config]]
+    name = "HTML"
+    identifiers = ["html"]
+    comment = { open = "<!-- ~~ ", close = " -->" }
+
+    [[lib/config]]
+    name = "Rust"
+    identifiers = ["rust", "rs"]
+    comment = { open = "// ~~ " }
+
+    [[lib/config]]
+    name = "Python"
+    identifiers = ["python", "py"]
+    comment = { open = "# ~~ " }
+
+    [[lib/config]]
+    name = "Bash"
+    identifiers = ["bash", "sh"]
+    comment = { open = "# ~~ " }
+
+    [[lib/config]]
+    name = "YAML"
+    identifiers = ["yaml", "yml"]
+    comment = { open = "# ~~ " }
+
+    [[lib/config]]
+    name = "JSON"
+    identifiers = ["json"]
+    comment = { open = "// ~~ " }
+  '';
+```
+
+## Toolchain resolution helpers
+
+These three helpers follow the same pattern: try the most specific attribute first, fall back to the most generic. They exist because nixpkgs attribute names for Node.js and Python shift between major versions and between nixpkgs channels. A consumer on a pinned nixpkgs may have `nodejs_22`; a consumer on a newer channel may have renamed it. These helpers insulate consumers from that churn.
+
+`entangledFor` resolves the entangled binary from the flake input rather than from nixpkgs. Entangled is not in nixpkgs stable. The `entangledInput` argument is the `entangled` flake input — passed in at construction time so this module does not close over any global state.
+
+```{.nix file=lib/config.nix as-real-file-path="flake.nix imports this module"}
+
+  entangledFor = pkgs: entangledInput.packages.${pkgs.stdenv.hostPlatform.system}.default;
+
+  pythonFor = pkgs:
+    if pkgs ? python3 then pkgs.python3 else pkgs.python313;
+
+  nodejsFor = pkgs:
+    if pkgs ? nodejs_22 then pkgs.nodejs_22
+    else if pkgs ? nodejs_20 then pkgs.nodejs_20
+    else pkgs.nodejs;
+}
+```

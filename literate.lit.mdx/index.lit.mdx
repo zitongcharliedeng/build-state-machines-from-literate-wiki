@@ -1,0 +1,56 @@
+---
+title: Literate State Machine Wiki
+description: A self-defining wiki that tangles literate sources into verified code
+tags: [root, map-of-content]
+---
+
+# Literate State Machine Wiki
+
+My opinionated tangle. Not a generic library. Not a framework for the world. This is how I build literate projects where everything is a state machine, everything goes to nix store, and prose explains every line of code.
+
+Pages are `.lit.mdx` files with prose between code blocks. The code blocks tangle into the actual source code of this tool. The prose IS the documentation. The code IS the implementation. They are the same artifact.
+
+## What this is
+
+An opinionated wrapper around Entangled — like how `cargo` wraps `rustc`. Entangled does the tangling. This tool adds the opinions:
+
+- **Pre-tangle source checks** that no linter can do (unannotated blocks, missing prose, directory-mismatch)
+- **Immutable generated files** (chmod 444 — the source of truth is always `.lit.mdx`)
+- **Nix store output** (tangled results are nix derivations via [[flake]])
+- **Everything in the store** — tangled code AND literate sources. The `.lit.mdx` files are nix store paths via `self`. Prose is a build artifact.
+
+The nix flake IS the build tool. `nix flake check` runs all validation. `nix build .#self-tangled` produces store output.
+
+## The nix modules
+
+- [[flake]] — the thin orchestrator (imports the modules, applies to itself)
+- [[lib/config]] — default entangled.toml, helper functions
+- [[lib/pipeline]] — project setup, tangle, lock, nix store install
+- [[lib/checks]] — pre-tangle structural checks, post-tangle validation, idempotency, immutability
+- [[lib/devshell]] — development environment with auto-tangle
+
+## How it works
+
+1. Pre-tangle checks run against `.lit.mdx` sources — violations accumulate (water model)
+2. Entangled extracts code blocks into generated files
+3. Generated files are locked read-only (chmod 444)
+4. Post-tangle checks run (configurable per consumer)
+
+All violations shown at once — not one at a time.
+
+## Generated files in the repo
+
+Most output goes to nix store. Six files are committed because nix and GitHub require them as real files:
+
+- `flake.nix` + `lib/*.nix` — nix can't evaluate without them (`as-real-file-path=`)
+- `.github/workflows/check.yml` — GitHub requires fixed path (`as-real-file-path=`)
+
+These are read-only (444), carry entangled markers pointing to their literate source, and are explicitly documented exceptions.
+
+## Consumer example
+
+See [[gridinstruments-example]] — shows a before/after of adopting this flake.
+
+## Self-reference
+
+This page is `index.lit.mdx`. It is part of the wiki it describes. The code blocks in the other pages tangle into the tool's source. The tool tangles the wiki that defines it — that is the bootstrap.

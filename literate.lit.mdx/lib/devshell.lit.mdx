@@ -1,0 +1,71 @@
+---
+title: Nix DevShell Module
+description: mkDevShell — the reusable development environment factory that every literate-state-machine-wiki consumer imports
+tags: [nix, devshell, module, mkShell]
+---
+
+# Nix DevShell Module
+
+`mkDevShell` builds a `pkgs.mkShell` derivation with Entangled on `PATH`, optional auto-tangle on shell entry, and configurable extra packages and environment variables. Consumers call it from their own `flake.nix` outputs to get a development shell that knows about their literate source layout.
+
+This module takes `{ lib, config }` where `config` is the attrset produced by [[lib/config]]. It does not import nixpkgs directly — the caller's `pkgs` flows through the `mkDevShell` argument set. This keeps the module honest: it cannot reach outside the argument boundary.
+
+## Why auto-tangle on shell entry?
+
+The canonical literate-state-machine-wiki workflow is: edit `.lit.mdx`, run `tangle`, read generated output. Without auto-tangle, a developer entering the shell after a `git pull` will have stale generated files with no indication anything is wrong. Auto-tangle on entry makes the shell self-healing: generated files always reflect the current literate sources before any `bun run` or `tsc` invocation can see them.
+
+The `sourceGlobs` parameter controls whether auto-tangle fires. An empty list means "always tangle." A non-empty list uses `compgen -G` to check whether any matching files exist — if none do, the project has no literate sources and the shell skips the tangle step silently. This handles mono-repos where only some sub-packages are literate.
+
+## Why pass config rather than hardcode the helpers?
+
+`entangledFor`, `nodejsFor`, and `pythonFor` live in [[lib/config]]. If `mkDevShell` called `entangled.packages.${system}.default` directly, the devshell module would need the `entangled` flake input in scope. That turns a pure function into a closure over flake inputs — impossible to test in isolation and impossible to reuse outside the flake context. Passing `config` as an argument keeps this module a plain function.
+
+## The shell hook structure
+
+Three layers compose in order:
+
+1. **Environment exports** — any `env` attrset entries become `export NAME=value` lines. This is for project-specific env vars like `DATABASE_URL` or `NODE_ENV`.
+2. **Version banner** — prints the Entangled version so developers immediately know if their Entangled binary is present and which version they are running.
+3. **Auto-tangle** — conditional on `tangleCommand != null` and on `sourceGlobs` matching. The [[flake]] is provided by the caller; this module only decides whether to invoke it.
+
+The caller's `shellHook` appends after all three layers, so consumer-specific messages and setup always run last.
+
+```{.nix file=lib/devshell.nix as-real-file-path="flake.nix imports this module"}
+{ lib, config }:
+{
+  mkDevShell = {
+    pkgs,
+    basePackages ? [ (config.nodejsFor pkgs) (config.pythonFor pkgs) ],
+    extraPackages ? [ ],
+    env ? { },
+    sourceGlobs ? [ "literate/*.lit.md" "literate/**/*.lit.md" ],
+    tangleCommand ? null,
+    shellHook ? ""
+  }:
+    let
+      autoTangleCondition =
+        if sourceGlobs == [ ]
+        then "true"
+        else lib.concatStringsSep " || "
+          (map (pattern: "compgen -G ${lib.escapeShellArg pattern} > /dev/null") sourceGlobs);
+      envExports = lib.concatStringsSep "\n" (lib.mapAttrsToList
+        (name: value: "export ${name}=${lib.escapeShellArg (toString value)}")
+        env);
+    in pkgs.mkShell {
+      packages = [ (config.entangledFor pkgs) ] ++ basePackages ++ extraPackages;
+      shellHook = ''
+        ${envExports}
+        echo "[literate-state-machine-wiki] entangled: $(entangled --version 2>/dev/null || echo 'NOT FOUND')"
+        ${lib.optionalString (tangleCommand != null) ''
+          if ${autoTangleCondition}; then
+            echo "[literate-state-machine-wiki] Auto-tangling literate source..."
+            ${tangleCommand}
+          else
+            echo "[literate-state-machine-wiki] No literate source matched configured globs"
+          fi
+        ''}
+        ${shellHook}
+      '';
+    };
+}
+```

@@ -1,4 +1,22 @@
-# ~~  ~/~ begin <<literate.lit.mdx/flake.lit.mdx#flake.nix>>[init]
+---
+title: Flake
+description: The thin orchestrator — imports modules, applies to itself
+tags: [nix, flake, bootstrap, architecture]
+---
+
+# Flake
+
+This is the entry point. It imports the modules from `lib/` and wires them together. The flake itself is literate — tangled from this `.lit.mdx` file by Entangled.
+
+The bootstrap order: `entangled tangle --force` produces `flake.nix` from this file. Then `nix flake check` uses that `flake.nix` to tangle, check, and build. The trusted base is Entangled. Everything above it is literate.
+
+The flake is deliberately thin. All logic lives in the modules:
+- [[lib/config]] — default entangled.toml, helper functions
+- [[lib/pipeline]] — tangling, locking, nix store installation
+- [[lib/checks]] — pre-tangle, post-tangle, and structural validation
+- [[lib/devshell]] — development environment with auto-tangle
+
+``` {.nix file=flake.nix as-real-file-path="nix requires flake.nix in repo (bootstrap paradox)"}
 {
   description = "literate-state-machine-wiki — my opinionated tangle";
 
@@ -59,4 +77,6 @@
         };
       };
 }
-# ~~  ~/~ end
+```
+
+One function: `init`. Consumer calls it, gets `checks`, `devShells`, and `packages`.

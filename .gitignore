@@ -1,2 +1,8 @@
+.claude/
+.omx/
 .omc/
-node_modules/
+.entangled/
+MEMORY/
+result
+**/.entangled/
+**/.omc/
