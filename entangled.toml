@@ -1,4 +1,5 @@
 version = "2.0"
+literate_root = "literate.lit.mdx"
 watch_list = ["literate.lit.mdx/**/*.lit.mdx", "literate.lit.mdx/**/*.lit.md"]
 annotation = "standard"
 

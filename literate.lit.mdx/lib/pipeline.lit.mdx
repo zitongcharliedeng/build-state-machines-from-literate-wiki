@@ -9,14 +9,14 @@ tags: [nix, pipeline, tangle, module]
 This module copies sources into a build sandbox, runs Entangled, strips generated markers, installs outputs to the nix store, and builds the local dev tangle app.
 
 ## Module signature
-```{.nix file=lib/pipeline.nix as-real-file-path="flake.nix imports this module"}
+```{.nix file=pipeline.nix as-real-file-path="flake.nix imports this module"}
 # ~~ This file is generated from literate.lit.mdx/nix/pipeline.lit.mdx
 { lib, config }:
 rec {
 ```
 ## projectSetup
 `projectSetup` copies the source tree into `build/`, then deletes `.entangled/filedb.json` so Entangled cannot skip outputs by trusting a stale database.
-```{.nix file=lib/pipeline.nix as-real-file-path="flake.nix imports this module"}
+```{.nix file=pipeline.nix as-real-file-path="flake.nix imports this module"}
   projectSetup = { src }: ''
     mkdir -p build
     cp -r ${src}/. build/
@@ -28,7 +28,7 @@ rec {
 ```
 ## stripEntangledMarkers
 Removes `~~ ` prefix comments that Entangled writes into generated files, skipping `.entangled/`, `entangled.toml`, and `*.lit.md` sources.
-```{.nix file=lib/pipeline.nix as-real-file-path="flake.nix imports this module"}
+```{.nix file=pipeline.nix as-real-file-path="flake.nix imports this module"}
   stripEntangledMarkers = ''
     find . \
       -type f \
@@ -48,7 +48,7 @@ Removes `~~ ` prefix comments that Entangled writes into generated files, skippi
 ```
 ## tangleProject
 Runs `entangled tangle --force` (required in a nix sandbox — no interactive terminal), then optionally strips markers.
-```{.nix file=lib/pipeline.nix as-real-file-path="flake.nix imports this module"}
+```{.nix file=pipeline.nix as-real-file-path="flake.nix imports this module"}
   tangleProject = { stripGeneratedMarkers ? true }: ''
     entangled tangle --force
     ${lib.optionalString stripGeneratedMarkers stripEntangledMarkers}
@@ -56,7 +56,7 @@ Runs `entangled tangle --force` (required in a nix sandbox — no interactive te
 ```
 ## installTargets
 Reads `.entangled/filedb.json` to discover tangled outputs, copies each into `$out` read-only, and fails loudly if the filedb or any declared target is missing.
-```{.nix file=lib/pipeline.nix as-real-file-path="flake.nix imports this module"}
+```{.nix file=pipeline.nix as-real-file-path="flake.nix imports this module"}
   installTargets = ''
     mkdir -p "$out"
     python3 - <<'PY'
@@ -85,7 +85,7 @@ Reads `.entangled/filedb.json` to discover tangled outputs, copies each into `$o
 ```
 ## tangle
 Composes `projectSetup`, `tangleProject`, and `installTargets` into a `pkgs.runCommand` derivation using binaries resolved by [[lib/config]].
-```{.nix file=lib/pipeline.nix as-real-file-path="flake.nix imports this module"}
+```{.nix file=pipeline.nix as-real-file-path="flake.nix imports this module"}
   tangle = {
     src,
     name ? "tangled",
@@ -104,7 +104,7 @@ Composes `projectSetup`, `tangleProject`, and `installTargets` into a `pkgs.runC
 
 ## buildWebWiki
 Produces a deployable directory from literate sources, resolving `[[wiki links]]` to relative markdown links for GitHub Pages or any static host.
-```{.nix file=lib/pipeline.nix as-real-file-path="flake.nix imports this module"}
+```{.nix file=pipeline.nix as-real-file-path="flake.nix imports this module"}
   buildWebWiki = {
     src,
     pkgs,

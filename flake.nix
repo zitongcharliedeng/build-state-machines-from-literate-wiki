@@ -4,7 +4,7 @@
 
   inputs = {
     nixpkgs.url = "nixpkgs";
-    entangled.url = "github:entangled/entangled.py";
+    entangled.url = "github:zitongcharliedeng/entangled";
   };
 
   outputs = { self, nixpkgs, entangled }:
