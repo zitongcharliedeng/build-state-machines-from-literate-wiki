@@ -65,4 +65,4 @@ The escalating pipeline runs five stages. Each stage is a nix derivation dependi
 4. **Test** — `npx playwright test` runs against the built app. Only if linting passed.
 5. **Install** — tangled TypeScript files go to nix store with chmod 444
 
-The consumer never calls `entangled`, never sees `.entangled/`, never runs `nix flake check`. One command: `nix build`.
+The consumer never calls `entangled`, never sees `.entangled/`, never runs `nix flake check`. One command: `literate-state-machine-wiki build`. Available in the devshell that `lib.init` provides.

@@ -35,11 +35,39 @@
           inherit pkgs src sourceDir forbidTsComments minProseLines maxBlockLength enforceDirectoryMatch;
           inherit linters tests;
         };
+        cli = pkgs.writeShellScriptBin "literate-state-machine-wiki" ''
+          set -euo pipefail
+          case "''${1:-}" in
+            build)
+              echo "[literate-state-machine-wiki] Building literate project..."
+              nix build "''${2:-.}#literate-verified" "''${@:3}"
+              echo "[literate-state-machine-wiki] Build complete."
+              ;;
+            *)
+              echo "literate-state-machine-wiki — opinionated literate build tool"
+              echo ""
+              echo "Usage: literate-state-machine-wiki build [flake-ref]"
+              echo ""
+              echo "  build   Run the full escalating pipeline:"
+              echo "          pre-check → tangle → lint → test → install"
+              echo ""
+              echo "Building literate means: check prose, tangle code,"
+              echo "lint the code dialect, test, install to store."
+              exit 1
+              ;;
+          esac
+        '';
       in {
         packages.${system} = {
           default = verified.default;
+          literate-verified = verified.default;
           tangled = verified.tangled;
           web-wiki = pipeline.buildWebWiki { inherit pkgs src; litSourceDir = sourceDir; };
+          inherit cli;
+        };
+        devShells.${system}.default = devshellLib.mkDevShell {
+          inherit pkgs;
+          extraPackages = [ cli ];
         };
       };
     in
@@ -61,10 +89,8 @@
 
         lib = { inherit init; inherit (config) defaultEntangledToml; };
 
-        # DevShell is for literate-state-machine-wiki development ONLY.
-        # Consumers do not need this — they use nix build.
-        # This exists because bootstrapping requires entangled in PATH
-        # to tangle flake.nix from its literate source.
+        # Library's own devShell — for developing literate-state-machine-wiki itself.
+        # Consumers get their own devShell from lib.init with the CLI included.
         devShells.${system}.default = devshellLib.mkDevShell {
           inherit pkgs;
         };

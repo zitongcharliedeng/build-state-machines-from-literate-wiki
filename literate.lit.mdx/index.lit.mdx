@@ -26,7 +26,7 @@ literate-state-machine-wiki.lib.init { pkgs, src, linters, tests, ... }
 #   packages.tangled = raw tangle (escape hatch for debugging)
 ```
 
-`nix build` is the one command. It runs the escalating pipeline, fails early at the first broken stage, and produces verified output with chmod 444.
+`literate-state-machine-wiki build` is the one command. It runs the escalating pipeline, fails early at the first broken stage, and produces verified output with chmod 444. The command is available in the devshell that `lib.init` provides.
 
 ## What it enforces
 
