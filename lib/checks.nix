@@ -171,6 +171,35 @@ LITCHECK
       checks);
 # ~~  ~/~ end
 # ~~  ~/~ begin <<literate.lit.mdx/lib/checks.lit.mdx#lib/checks.nix>>[4]
+  renderChecksWaterModel = phase: checks: ''
+    _lsmw_errors=0
+    ${builtins.concatStringsSep "\n" (map
+      (check: ''
+        echo "[literate-state-machine-wiki:${phase}] ${check.description or check.name}"
+        set +e
+        (
+          cd ${lib.escapeShellArg (check.cwd or ".")}
+          ${check.command}
+        )
+        _lsmw_status=$?
+        set -e
+        if [ "$_lsmw_status" -ne 0 ]; then
+          ${if (check.mode or "error") == "warn" then ''
+            echo "[literate-state-machine-wiki:${phase}] WARNING: ${check.name} failed"
+          '' else ''
+            echo "[literate-state-machine-wiki:${phase}] ERROR: ${check.name} failed"
+            _lsmw_errors=$((_lsmw_errors + 1))
+          ''}
+        fi
+      '')
+      checks)}
+    if [ "$_lsmw_errors" -gt 0 ]; then
+      echo "[literate-state-machine-wiki:${phase}] $_lsmw_errors error(s)"
+      exit 1
+    fi
+  '';
+# ~~  ~/~ end
+# ~~  ~/~ begin <<literate.lit.mdx/lib/checks.lit.mdx#lib/checks.nix>>[5]
   mkProjectCheck = {
     pkgs, src, name, command,
     nativeBuildInputs ? [ ],
@@ -187,7 +216,7 @@ LITCHECK
       touch "$out"
     '';
 # ~~  ~/~ end
-# ~~  ~/~ begin <<literate.lit.mdx/lib/checks.lit.mdx#lib/checks.nix>>[5]
+# ~~  ~/~ begin <<literate.lit.mdx/lib/checks.lit.mdx#lib/checks.nix>>[6]
   checkIdempotent = {
     src, name ? "idempotent-check", pkgs,
  stripGeneratedMarkers ? true
@@ -215,7 +244,7 @@ LITCHECK
       touch "$out"
     '';
 # ~~  ~/~ end
-# ~~  ~/~ begin <<literate.lit.mdx/lib/checks.lit.mdx#lib/checks.nix>>[6]
+# ~~  ~/~ begin <<literate.lit.mdx/lib/checks.lit.mdx#lib/checks.nix>>[7]
   makeNamedChecks = {
     phase, checks, pkgs, src, stripGeneratedMarkers
   }:
@@ -248,7 +277,7 @@ LITCHECK
         })
       checks);
 # ~~  ~/~ end
-# ~~  ~/~ begin <<literate.lit.mdx/lib/checks.lit.mdx#lib/checks.nix>>[7]
+# ~~  ~/~ begin <<literate.lit.mdx/lib/checks.lit.mdx#lib/checks.nix>>[8]
   makeChecks = {
     src, pkgs,
     sourceDir ? "literate",
@@ -288,6 +317,94 @@ LITCHECK
     } // makeNamedChecks {
       phase = "post"; checks = postTangleChecks;
       inherit pkgs src stripGeneratedMarkers;
+    };
+# ~~  ~/~ end
+# ~~  ~/~ begin <<literate.lit.mdx/lib/checks.lit.mdx#lib/checks.nix>>[9]
+  makeVerify = {
+    src, pkgs,
+    sourceDir ? "literate.lit.mdx",
+    forbidTsComments ? true,
+    tooltipCheckFile ? null,
+    minProseLines ? 3,
+    maxBlockLength ? 50,
+    enforceDirectoryMatch ? false,
+    stripGeneratedMarkers ? true,
+    linters ? [],
+    tests ? []
+  }:
+    let
+      allPreChecks = mkDefaultPreTangleChecks {
+        inherit sourceDir forbidTsComments tooltipCheckFile minProseLines maxBlockLength enforceDirectoryMatch;
+      };
+
+      # Stage 1: Pre-check — validates literate structure
+      preChecked = pkgs.runCommand "literate-pre-checked" {
+        nativeBuildInputs = [ (config.pythonFor pkgs) ];
+      } ''
+        set -euo pipefail
+        mkdir -p $out
+        cp -r ${src}/. $out/
+        chmod -R u+w $out
+        cd $out
+        ${renderChecksWaterModel "pre" allPreChecks}
+      '';
+
+      # Stage 2: Tangle — entangled extracts code (depends on preChecked)
+      tangledTree = pkgs.runCommand "literate-tangled-tree" {
+        nativeBuildInputs = [ (config.entangledFor pkgs) (config.pythonFor pkgs) ];
+      } ''
+        set -euo pipefail
+        mkdir -p $out
+        cp -r ${preChecked}/. $out/
+        chmod -R u+w $out
+        cd $out
+        rm -f .entangled/filedb.json
+        ${pipeline.tangleProject { inherit stripGeneratedMarkers; }}
+      '';
+
+      # Stage 3: Lint — consumer linters, water model (depends on tangledTree)
+      linted = if linters == [] then tangledTree else
+        pkgs.runCommand "literate-linted" {
+          nativeBuildInputs = collectNativeBuildInputs linters;
+        } ''
+          set -euo pipefail
+          mkdir -p work
+          cp -r ${tangledTree}/. work/
+          chmod -R u+w work
+          cd work
+          ${renderChecksWaterModel "lint" linters}
+          ln -s ${tangledTree} $out
+        '';
+
+      # Stage 4: Test — consumer tests, water model (depends on linted)
+      tested = if tests == [] then linted else
+        pkgs.runCommand "literate-tested" {
+          nativeBuildInputs = collectNativeBuildInputs tests;
+        } ''
+          set -euo pipefail
+          # Gate: nix resolves ${linted} before this derivation starts
+          mkdir -p work
+          cp -r ${linted}/. work/
+          chmod -R u+w work
+          cd work
+          ${renderChecksWaterModel "test" tests}
+          touch $out
+        '';
+
+      # Stage 5: Install — extract tangled targets with chmod 444
+      installed = pkgs.runCommand "literate-verified" {
+        nativeBuildInputs = [ (config.pythonFor pkgs) ];
+      } ''
+        set -euo pipefail
+        # Gate: nix resolves ${tested} before this derivation starts
+        test -e ${tested}
+        cd ${tangledTree}
+        ${pipeline.installTargets}
+      '';
+
+    in {
+      default = installed;
+      tangled = pipeline.tangle { inherit src pkgs stripGeneratedMarkers; };
     };
 }
 # ~~  ~/~ end

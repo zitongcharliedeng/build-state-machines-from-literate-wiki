@@ -23,20 +23,22 @@
         src,
         system ? "x86_64-linux",
         linters ? [ ],
+        tests ? [ ],
         sourceDir ? "literate.lit.mdx",
         forbidTsComments ? true,
         minProseLines ? 3,
         maxBlockLength ? 50,
         enforceDirectoryMatch ? false
       }:
-      {
-        checks.${system} = checksLib.makeChecks {
+      let
+        verified = checksLib.makeVerify {
           inherit pkgs src sourceDir forbidTsComments minProseLines maxBlockLength enforceDirectoryMatch;
-          postTangleChecks = linters;
+          inherit linters tests;
         };
-
+      in {
         packages.${system} = {
-          tangled = pipeline.tangle { inherit pkgs src; };
+          default = verified.default;
+          tangled = verified.tangled;
           web-wiki = pipeline.buildWebWiki { inherit pkgs src; litSourceDir = sourceDir; };
         };
       };
@@ -48,10 +50,19 @@
         sourceDir = "literate.lit.mdx";
         maxBlockLength = 200;
       }) // {
+        # Library-only checks — self-testing, NOT inherited by consumers
+        checks.${system} = {
+          tangle-idempotent = checksLib.checkIdempotent { src = ./.; inherit pkgs; };
+          tangle-immutable = checksLib.checkImmutable {
+            tangled = pipeline.tangle { inherit pkgs; src = ./.; };
+            inherit pkgs;
+          };
+        };
+
         lib = { inherit init; inherit (config) defaultEntangledToml; };
 
         # DevShell is for literate-state-machine-wiki development ONLY.
-        # Consumers do not need this — they use nix flake check.
+        # Consumers do not need this — they use nix build.
         # This exists because bootstrapping requires entangled in PATH
         # to tangle flake.nix from its literate source.
         devShells.${system}.default = devshellLib.mkDevShell {
