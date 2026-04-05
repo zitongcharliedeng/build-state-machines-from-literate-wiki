@@ -42,6 +42,15 @@
               echo "[literate-state-machine-wiki] Building literate project..."
               nix build "''${2:-.}#literate-verified" "''${@:3}"
               echo "[literate-state-machine-wiki] Build complete."
+              if [ -e result ]; then
+                target="result/_generated"
+                if [ ! -e "$target" ]; then
+                  target="result"
+                fi
+                rm -f _generated
+                ln -s "$target" _generated
+                echo "[literate-state-machine-wiki] Symlinked _generated -> $target"
+              fi
               ;;
             *)
               echo "literate-state-machine-wiki — opinionated literate build tool"
@@ -93,6 +102,7 @@
         # Consumers get their own devShell from lib.init with the CLI included.
         devShells.${system}.default = devshellLib.mkDevShell {
           inherit pkgs;
+          includeEntangled = true;
         };
       };
 }
