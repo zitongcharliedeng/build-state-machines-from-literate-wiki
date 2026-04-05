@@ -373,7 +373,7 @@ LITCHECK
           chmod -R u+w work
           cd work
           ${renderChecksWaterModel "lint" linters}
-          ln -s ${tangledTree} $out
+          touch $out
         '';
 
       # Stage 4: Test — consumer tests, water model (depends on linted)
@@ -383,8 +383,9 @@ LITCHECK
         } ''
           set -euo pipefail
           # Gate: nix resolves ${linted} before this derivation starts
+          test -e ${linted}
           mkdir -p work
-          cp -r ${linted}/. work/
+          cp -r ${tangledTree}/. work/
           chmod -R u+w work
           cd work
           ${renderChecksWaterModel "test" tests}
