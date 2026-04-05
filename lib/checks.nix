@@ -392,19 +392,15 @@ LITCHECK
           touch $out
         '';
 
-      # Stage 5: Install — extract tangled targets with chmod 444
-      installed = pkgs.runCommand "literate-verified" {
-        nativeBuildInputs = [ (config.pythonFor pkgs) ];
-      } ''
-        set -euo pipefail
+      # Stage 5: Verified — the full project tree after all gates pass
+      verified = pkgs.runCommand "literate-verified" {} ''
         # Gate: nix resolves ${tested} before this derivation starts
         test -e ${tested}
-        cd ${tangledTree}
-        ${pipeline.installTargets}
+        cp -r ${tangledTree} $out
       '';
 
     in {
-      default = installed;
+      default = verified;
       tangled = pipeline.tangle { inherit src pkgs stripGeneratedMarkers; };
     };
 }
