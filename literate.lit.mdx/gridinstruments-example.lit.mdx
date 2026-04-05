@@ -1,0 +1,68 @@
+---
+title: GridInstruments Example
+description: How gridinstruments consumes literate-state-machine-wiki — before/after of adopting this flake
+tags: [example, consumer, gridinstruments]
+---
+
+# GridInstruments Example
+
+GridInstruments is an isomorphic grid keyboard synthesizer — 65 literate files, TypeScript + XState, Playwright tests. It is the reference consumer of literate-state-machine-wiki.
+
+## Consumer flake.nix
+
+A consumer adds literate-state-machine-wiki as a flake input, calls `lib.init`, and merges the result into their outputs. The consumer's entire integration is this:
+
+```
+{
+  inputs = {
+    nixpkgs.url = "nixpkgs";
+    literate-state-machine-wiki.url = "github:zitongcharliedeng/build-state-machines-from-literate-wiki";
+  };
+
+  outputs = { self, nixpkgs, literate-state-machine-wiki }:
+    let
+      system = "x86_64-linux";
+      pkgs = nixpkgs.legacyPackages.${system};
+    in
+      literate-state-machine-wiki.lib.init {
+        inherit pkgs;
+        src = ./.;
+        sourceDir = "literate.lit.mdx";
+
+        # Stage 3: linters (fast, deterministic)
+        linters = [
+          {
+            name = "typecheck";
+            command = "tsc --noEmit";
+            nativeBuildInputs = [ pkgs.typescript ];
+          }
+          {
+            name = "ast-grep";
+            command = "ast-grep scan";
+            nativeBuildInputs = [ pkgs.ast-grep ];
+          }
+        ];
+
+        # Stage 4: tests (slow, needs browser)
+        tests = [
+          {
+            name = "playwright";
+            command = "npx playwright test --project=firefox --workers=1";
+            nativeBuildInputs = [ pkgs.firefox pkgs.nodejs ];
+          }
+        ];
+      };
+}
+```
+
+## What happens when the consumer runs `nix build`
+
+The escalating pipeline runs five stages. Each stage is a nix derivation depending on the previous. If any stage fails, the rest never build.
+
+1. **Pre-check** — validates all 65 `.lit.mdx` files have annotations, prose density, intro prose, no invisible blocks
+2. **Tangle** — Entangled extracts TypeScript from `.lit.mdx` into the project tree (hidden from the consumer)
+3. **Lint** — `tsc --noEmit` and `ast-grep scan` run on the tangled output. Water model: both run, all violations shown
+4. **Test** — `npx playwright test` runs against the built app. Only if linting passed.
+5. **Install** — tangled TypeScript files go to nix store with chmod 444
+
+The consumer never calls `entangled`, never sees `.entangled/`, never runs `nix flake check`. One command: `literate-state-machine-wiki build`. Available in the devshell that `lib.init` provides.

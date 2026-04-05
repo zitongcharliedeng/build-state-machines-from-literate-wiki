@@ -1,0 +1,80 @@
+---
+title: Literate State Machine Wiki
+description: My opinionated build tool — tangles literate sources into verified code for every project I write
+tags: [root, map-of-content]
+---
+
+# Literate State Machine Wiki
+
+## Purpose
+
+This is my build tool. Every project I write — in any language — uses it. It enforces one rule: all code is literate. Prose explains every line. Code lives inside `.lit.mdx` files. Generated source files are build artifacts, not things you edit.
+
+It wraps Entangled the way `cargo` wraps `rustc`. Entangled does the tangling. This tool adds the opinions, the checks, and the nix integration.
+
+## What it does
+
+One function: `lib.init`. A consumer project adds this flake as an input, calls `init`, and gets back packages. `nix build` runs the full escalating pipeline. That is the entire consumer interface.
+
+```
+inputs.literate-state-machine-wiki.url = "github:zitongcharliedeng/build-state-machines-from-literate-wiki";
+
+# in outputs:
+literate-state-machine-wiki.lib.init { pkgs, src, linters, tests, ... }
+# returns: { packages }
+#   packages.default = verified tangled output (the product)
+#   packages.tangled = raw tangle (escape hatch for debugging)
+```
+
+`literate-state-machine-wiki build` is the one command. It runs the escalating pipeline, fails early at the first broken stage, and produces verified output with chmod 444. The command is available in the devshell that `lib.init` provides.
+
+## What it enforces
+
+Five stages, four gates. Each stage is a nix derivation depending on the previous — nix's dependency graph IS the escalating pipeline. See [[lib/checks]] for the implementation.
+
+1. **Pre-tangle checks** — literate structure validation (annotations, prose density, no invisible blocks). Operates on `.lit.mdx` source, not generated code. Water model: all violations collected, shown at once.
+2. **Tangle** — Entangled extracts code from `.lit.mdx` (hidden, consumers never see it). Only runs if pre-checks pass.
+3. **Lint** — consumer's linters run on the tangled tree (`tsc`, `eslint`, `ast-grep` — whatever the language needs). Pass them as the `linters` argument. Water model. Only runs if tangle succeeds.
+4. **Test** — consumer's tests run on the tangled tree (playwright, vitest, nix eval — whatever verifies correctness). Pass them as the `tests` argument. Water model. Only runs if linting passes.
+5. **Install** — tangled targets extracted to nix store with chmod 444. Only runs if all previous stages pass.
+
+## How it works
+
+The pipeline is an escalating sequence of gates. See [[lib/checks]] and [[lib/pipeline]] for the implementation — the code there IS the pipeline, not this prose.
+
+The modules, each doing one thing:
+
+- [[lib/pipeline]] — tangles `.lit.mdx` into generated files and installs to nix store
+- [[lib/checks]] — validates literate discipline (pre-tangle) and code quality (post-tangle), escalating with early fails between stages, water model within each stage
+- [[lib/devshell]] — development environment with auto-tangle on entry
+- [[lib/config]] — default `entangled.toml` and toolchain helpers
+- [[flake]] — the thin orchestrator that imports the modules and wires `lib.init`
+
+`lib.init` composes them into a single call. Consumers never touch the pieces directly.
+
+<!-- TODO: the nix that builds this library also needs this library (bootstrap paradox). Currently bootstrapped with `entangled tangle --force` then `nix flake check`. -->
+
+## Language-agnostic
+
+Entangled tangles any language — the code block annotation declares the language and target file. The default `entangled.toml` includes language tables for TypeScript, Nix, CSS, HTML, Rust, Python, Bash, YAML, and JSON. Add more by overriding the config.
+
+The pre-tangle checks are language-agnostic (they inspect `.lit.mdx` structure, not code syntax). The post-tangle checks are language-specific (your linters, your rules).
+
+## Consumers
+
+- **gridinstruments** — isomorphic grid keyboard. 65 literate files, TypeScript + XState. The reference implementation. See [[gridinstruments-example]].
+- **NixOS system flake** — system configuration as literate `.lit.mdx` that tangles to `.nix` modules. Planned.
+- **Every future project** — this is the only way I build software.
+
+## Generated files in the repo
+
+Most output goes to nix store. A few files are committed because nix and GitHub require them at fixed paths:
+
+- `flake.nix` + `lib/*.nix` — nix can't evaluate without them (`as-real-file-path=`)
+- `.github/workflows/check.yml` — GitHub requires fixed path (`as-real-file-path=`)
+
+These are read-only (444), carry entangled markers pointing to their literate source, and are explicitly documented exceptions.
+
+## Self-reference
+
+This page is `index.lit.mdx`. It is part of the wiki it describes. The code blocks in the other pages tangle into the tool's source. The tool tangles the wiki that defines it — that is the bootstrap.

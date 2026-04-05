@@ -1,0 +1,53 @@
+---
+title: GitHub Actions Workflow
+description: The one committed generated file — tangles from literate sources, then runs nix
+tags: [ci, github]
+---
+
+# GitHub Actions Workflow
+
+The one committed generated file. GitHub requires it at `.github/workflows/`. It installs entangled, tangles the literate sources into nix files, then runs `nix flake check`. No generated nix is committed to the repo.
+
+``` {.yaml file=.github/workflows/check.yml as-real-file-path="GitHub requires workflow files at .github/workflows/"}
+name: Check and Deploy
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install entangled-cli
+      - run: entangled tangle --force
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - run: nix flake check
+
+  deploy-wiki:
+    needs: check
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install entangled-cli
+      - run: entangled tangle --force
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - run: nix build .#web-wiki
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: result
+      - id: deployment
+        uses: actions/deploy-pages@v4
+```

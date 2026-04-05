@@ -1,0 +1,49 @@
+version = "2.0"
+literate_root = "literate.lit.mdx"
+watch_list = ["literate.lit.mdx/**/*.lit.mdx", "literate.lit.mdx/**/*.lit.md"]
+annotation = "standard"
+
+[[languages]]
+name = "TypeScript"
+identifiers = ["ts", "typescript"]
+comment = { open = "// ~~ " }
+
+[[languages]]
+name = "Nix"
+identifiers = ["nix"]
+comment = { open = "# ~~ " }
+
+[[languages]]
+name = "CSS"
+identifiers = ["css"]
+comment = { open = "/* ~~ ", close = " */" }
+
+[[languages]]
+name = "HTML"
+identifiers = ["html"]
+comment = { open = "<!-- ~~ ", close = " -->" }
+
+[[languages]]
+name = "Rust"
+identifiers = ["rust", "rs"]
+comment = { open = "// ~~ " }
+
+[[languages]]
+name = "Python"
+identifiers = ["python", "py"]
+comment = { open = "# ~~ " }
+
+[[languages]]
+name = "Bash"
+identifiers = ["bash", "sh"]
+comment = { open = "# ~~ " }
+
+[[languages]]
+name = "YAML"
+identifiers = ["yaml", "yml"]
+comment = { open = "# ~~ " }
+
+[[languages]]
+name = "JSON"
+identifiers = ["json"]
+comment = { open = "// ~~ " }
