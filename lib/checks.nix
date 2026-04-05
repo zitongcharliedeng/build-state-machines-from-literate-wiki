@@ -363,44 +363,33 @@ LITCHECK
       '';
 
       # Stage 3: Lint — consumer linters, water model (depends on tangledTree)
+      # Output: the full tree WITH any linter artifacts (e.g. dist/ from vite build)
       linted = if linters == [] then tangledTree else
         pkgs.runCommand "literate-linted" {
           nativeBuildInputs = collectNativeBuildInputs linters;
         } ''
           set -euo pipefail
-          mkdir -p work
-          cp -r ${tangledTree}/. work/
-          chmod -R u+w work
-          cd work
+          cp -r ${tangledTree}/. $out/
+          chmod -R u+w $out
+          cd $out
           ${renderChecksWaterModel "lint" linters}
-          touch $out
         '';
 
       # Stage 4: Test — consumer tests, water model (depends on linted)
+      # Output: the full tree WITH linter + test artifacts
       tested = if tests == [] then linted else
         pkgs.runCommand "literate-tested" {
           nativeBuildInputs = collectNativeBuildInputs tests;
         } ''
           set -euo pipefail
-          # Gate: nix resolves ${linted} before this derivation starts
-          test -e ${linted}
-          mkdir -p work
-          cp -r ${tangledTree}/. work/
-          chmod -R u+w work
-          cd work
+          cp -r ${linted}/. $out/
+          chmod -R u+w $out
+          cd $out
           ${renderChecksWaterModel "test" tests}
-          touch $out
         '';
 
-      # Stage 5: Verified — the full project tree after all gates pass
-      verified = pkgs.runCommand "literate-verified" {} ''
-        # Gate: nix resolves ${tested} before this derivation starts
-        test -e ${tested}
-        cp -r ${tangledTree} $out
-      '';
-
     in {
-      default = verified;
+      default = tested;
       tangled = pipeline.tangle { inherit src pkgs stripGeneratedMarkers; };
     };
 }
