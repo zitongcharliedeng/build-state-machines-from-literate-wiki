@@ -8,8 +8,7 @@
     env ? { },
     sourceGlobs ? [ "literate/*.lit.md" "literate/**/*.lit.md" ],
     tangleCommand ? null,
-    shellHook ? "",
-    includeEntangled ? false
+    shellHook ? ""
   }:
     let
       autoTangleCondition =
@@ -20,14 +19,11 @@
       envExports = lib.concatStringsSep "\n" (lib.mapAttrsToList
         (name: value: "export ${name}=${lib.escapeShellArg (toString value)}")
         env);
-      entangledPackages = lib.optionals includeEntangled [ (config.entangledFor pkgs) ];
     in pkgs.mkShell {
-      packages = entangledPackages ++ basePackages ++ extraPackages;
+      packages = [ (config.entangledFor pkgs) ] ++ basePackages ++ extraPackages;
       shellHook = ''
         ${envExports}
-        ${lib.optionalString includeEntangled ''
-          echo "[literate-state-machine-wiki] entangled: $(entangled --version 2>/dev/null || echo 'NOT FOUND')"
-        ''}
+        echo "[literate-state-machine-wiki] entangled: $(entangled --version 2>/dev/null || echo 'NOT FOUND')"
         ${lib.optionalString (tangleCommand != null) ''
           if ${autoTangleCondition}; then
             echo "[literate-state-machine-wiki] Auto-tangling literate source..."
