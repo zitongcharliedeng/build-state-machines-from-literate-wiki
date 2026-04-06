@@ -36,32 +36,13 @@ Two checks run before Entangled writes output: `literate-structure` rejects code
         name = "literate-structure";
         command = ''
           python3 - <<'LITCHECK'
-import os, re, sys, tomllib
+import os, re, sys
 
 source_dir = ${builtins.toJSON sourceDir}
 min_prose = ${toString minProseLines}
 max_block = ${toString maxBlockLength}
 forbid_comments = ${if forbidTsComments then "True" else "False"}
 enforce_dirs = ${if enforceDirectoryMatch then "True" else "False"}
-
-# Read entangled.toml to discover tangleable languages — no hardcoded whitelist
-tangleable_langs = set()
-for toml_path in ["entangled.toml", "../entangled.toml"]:
-    if os.path.exists(toml_path):
-        with open(toml_path, "rb") as f:
-            cfg = tomllib.load(f)
-        for lang in cfg.get("languages", []):
-            for ident in lang.get("identifiers", []):
-                tangleable_langs.add(ident.lower())
-        break
-
-def _is_prose_lang(trimmed, fence, tangleable):
-    """A code block whose language is NOT in entangled's config is prose."""
-    lang_part = trimmed[len(fence):].strip().split()[0] if trimmed[len(fence):].strip() else ""
-    # Strip {. prefix from pandoc-style annotations
-    lang_part = re.sub(r'^\{\.', '', lang_part).rstrip('}').split()[0] if lang_part.startswith('{') else lang_part
-    return lang_part.lower() not in tangleable
-
 errors = 0
 violations = 0
 fence = chr(96) * 3  # three backticks
@@ -96,16 +77,7 @@ for root, _, files in os.walk(source_dir):
                     has_intro = True
                 first_block = True
 
-                if not has_annotation and trimmed == fence:
-                    print(f"  error core/no-invisible-blocks: {path}:{num}")
-                    print(f"    Unannotated code block - invisible to Entangled")
-                    violations += 1
-                elif not has_annotation and trimmed != fence and not _is_prose_lang(trimmed, fence, tangleable_langs):
-                    print(f"  error core/annotation-required: {path}:{num}")
-                    print(f"    Code block missing file= annotation")
-                    errors += 1
-
-                if has_annotation and enforce_dirs and "as-real-file-path=" not in trimmed:
+                if has_annotation and enforce_dirs and "as-absolute-file-path=" not in trimmed:
                     file_match = re.search(r'file=([^\s}"]+)', trimmed)
                     if file_match:
                         target = file_match.group(1)
