@@ -389,8 +389,7 @@ Five stages, four gates:
     maxBlockLength ? 50,
     enforceDirectoryMatch ? false,
     stripGeneratedMarkers ? true,
-    linters ? [],
-    tests ? []
+    postTangle ? []
   }:
     let
       allPreChecks = mkDefaultPreTangleChecks {
@@ -425,34 +424,21 @@ TOML
         ${pipeline.tangleProject { inherit stripGeneratedMarkers; }}
       '';
 
-      # Stage 3: Lint — consumer linters, water model (depends on tangledTree)
-      # Output: the full tree WITH any linter artifacts (e.g. dist/ from vite build)
-      linted = if linters == [] then tangledTree else
-        pkgs.runCommand "literate-linted" {
-          nativeBuildInputs = collectNativeBuildInputs linters;
+      # Stage 3: Post-tangle hooks — consumer's commands, water model (depends on tangledTree)
+      # Output: the full tree WITH any hook artifacts (e.g. dist/ from vite build)
+      postTangled = if postTangle == [] then tangledTree else
+        pkgs.runCommand "literate-post-tangled" {
+          nativeBuildInputs = collectNativeBuildInputs postTangle;
         } ''
           set -euo pipefail
           cp -r ${tangledTree}/. $out/
           chmod -R u+w $out
           cd $out
-          ${renderChecksWaterModel "lint" linters}
-        '';
-
-      # Stage 4: Test — consumer tests, water model (depends on linted)
-      # Output: the full tree WITH linter + test artifacts
-      tested = if tests == [] then linted else
-        pkgs.runCommand "literate-tested" {
-          nativeBuildInputs = collectNativeBuildInputs tests;
-        } ''
-          set -euo pipefail
-          cp -r ${linted}/. $out/
-          chmod -R u+w $out
-          cd $out
-          ${renderChecksWaterModel "test" tests}
+          ${renderChecksWaterModel "post" postTangle}
         '';
 
     in {
-      default = tested;
+      default = postTangled;
       tangled = pipeline.tangle { inherit src pkgs stripGeneratedMarkers; };
     };
 }

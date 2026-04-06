@@ -22,8 +22,7 @@
         pkgs,
         src,
         system ? "x86_64-linux",
-        linters ? [ ],
-        tests ? [ ],
+        postTangle ? [ ],
         sourceDir ? "literate.lit.mdx",
         forbidTsComments ? true,
         minProseLines ? 3,
@@ -33,7 +32,7 @@
       let
         verified = checksLib.makeVerify {
           inherit pkgs src sourceDir forbidTsComments minProseLines maxBlockLength enforceDirectoryMatch;
-          inherit linters tests;
+          inherit postTangle;
         };
         cli = pkgs.writeShellScriptBin "literate-state-machine-wiki" ''
           set -euo pipefail
