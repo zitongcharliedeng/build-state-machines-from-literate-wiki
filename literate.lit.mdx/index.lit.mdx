@@ -56,7 +56,7 @@ The modules, each doing one thing:
 
 ## The store output IS the product
 
-The full project tree — literate source, tangled code, build artifacts — lives in the nix store after `literate-state-machine-wiki build`. Nothing is filtered out. The literate `.lit.mdx` files are documentation, readable prose, and can serve as static assets (e.g. raw imports for About dialogs). The tangled code is the executable output. The `dist/` is the production bundle. All of it belongs in the store.
+The full project tree — literate source, tangled code, and any artifacts produced by postTangle hooks — lives in the nix store after `literate-state-machine-wiki build`. Nothing is filtered out. The literate `.lit.mdx` files are documentation, readable prose, and can serve as static assets. The tangled code is the executable output. Whatever the consumer's hooks produce belongs in the store too.
 
 Nix garbage collection operates on entire store paths, not individual files. If a consumer doesn't reference the store output, nix GC removes the whole thing. The tool does not decide what's useful — the consumer does.
 
