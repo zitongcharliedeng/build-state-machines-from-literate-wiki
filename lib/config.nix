@@ -6,47 +6,47 @@
     watch_list = ["**/*.lit.md", "**/*.lit.mdx"]
     annotation = "standard"
 
-    [[lib/config]]
+    [[languages]]
     name = "TypeScript"
     identifiers = ["ts", "typescript"]
     comment = { open = "// ~~ " }
 
-    [[lib/config]]
+    [[languages]]
     name = "Nix"
     identifiers = ["nix"]
     comment = { open = "# ~~ " }
 
-    [[lib/config]]
+    [[languages]]
     name = "CSS"
     identifiers = ["css"]
     comment = { open = "/* ~~ ", close = " */" }
 
-    [[lib/config]]
+    [[languages]]
     name = "HTML"
     identifiers = ["html"]
     comment = { open = "<!-- ~~ ", close = " -->" }
 
-    [[lib/config]]
+    [[languages]]
     name = "Rust"
     identifiers = ["rust", "rs"]
     comment = { open = "// ~~ " }
 
-    [[lib/config]]
+    [[languages]]
     name = "Python"
     identifiers = ["python", "py"]
     comment = { open = "# ~~ " }
 
-    [[lib/config]]
+    [[languages]]
     name = "Bash"
     identifiers = ["bash", "sh"]
     comment = { open = "# ~~ " }
 
-    [[lib/config]]
+    [[languages]]
     name = "YAML"
     identifiers = ["yaml", "yml"]
     comment = { open = "# ~~ " }
 
-    [[lib/config]]
+    [[languages]]
     name = "JSON"
     identifiers = ["json"]
     comment = { open = "// ~~ " }
