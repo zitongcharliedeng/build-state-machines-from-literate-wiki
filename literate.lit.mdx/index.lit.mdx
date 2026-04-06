@@ -54,6 +54,16 @@ The modules, each doing one thing:
 
 <!-- TODO: the nix that builds this library also needs this library (bootstrap paradox). Currently bootstrapped with `entangled tangle --force` then `nix flake check`. -->
 
+## The store output IS the product
+
+The full project tree — literate source, tangled code, build artifacts — lives in the nix store after `literate-state-machine-wiki build`. Nothing is filtered out. The literate `.lit.mdx` files are documentation, readable prose, and can serve as static assets (e.g. raw imports for About dialogs). The tangled code is the executable output. The `dist/` is the production bundle. All of it belongs in the store.
+
+Nix garbage collection operates on entire store paths, not individual files. If a consumer doesn't reference the store output, nix GC removes the whole thing. The tool does not decide what's useful — the consumer does.
+
+## Hook system
+
+literate-state-machine-wiki is a hook system, like Claude Code hooks. The library provides pre-tangle hooks (prose density, annotations) and the tangle step (entangled, hidden). The consumer provides `postTangle` hooks — an ordered list of commands to run after tangling. The library is language-agnostic: it does not know about npm, TypeScript, vite, or any ecosystem. The consumer handles their own tooling in their hooks.
+
 ## Language-agnostic
 
 Entangled tangles any language — the code block annotation declares the language and target file. The default `entangled.toml` includes language tables for TypeScript, Nix, CSS, HTML, Rust, Python, Bash, YAML, and JSON. Add more by overriding the config.
