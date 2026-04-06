@@ -10,6 +10,11 @@ rec {
     chmod -R u+w build
     cd build
 
+    # Library provides entangled.toml — consumer doesn't need one
+    cat > entangled.toml << 'TOML'
+    ${config.defaultEntangledToml}
+    TOML
+
     rm -f .entangled/filedb.json
   '';
 # ~~  ~/~ end

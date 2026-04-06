@@ -15,13 +15,18 @@ This module copies sources into a build sandbox, runs Entangled, strips generate
 rec {
 ```
 ## projectSetup
-`projectSetup` copies the source tree into `build/`, then deletes `.entangled/filedb.json` so Entangled cannot skip outputs by trusting a stale database.
+`projectSetup` copies the source tree into `build/`, writes `entangled.toml` (so the consumer never needs one), and deletes `.entangled/filedb.json` so Entangled cannot skip outputs by trusting a stale database.
 ```{.nix file=pipeline.nix as-real-file-path="flake.nix imports this module"}
   projectSetup = { src }: ''
     mkdir -p build
     cp -r ${src}/. build/
     chmod -R u+w build
     cd build
+
+    # Library provides entangled.toml — consumer doesn't need one
+    cat > entangled.toml << 'TOML'
+    ${config.defaultEntangledToml}
+    TOML
 
     rm -f .entangled/filedb.json
   '';
