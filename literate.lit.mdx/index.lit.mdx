@@ -64,6 +64,23 @@ Nix garbage collection operates on entire store paths, not individual files. If 
 
 literate-state-machine-wiki is a hook system, like Claude Code hooks. The library provides pre-tangle hooks (prose density, annotations) and the tangle step (entangled, hidden). The consumer provides `postTangle` hooks — an ordered list of commands to run after tangling. The library is language-agnostic: it does not know about npm, TypeScript, vite, or any ecosystem. The consumer handles their own tooling in their hooks.
 
+## Forms emerge when needed
+
+Files only take their final form (JSON, TypeScript, YAML) at the moment they are consumed. Everything is `.lit.mdx` until the pipeline transforms it. This is the Taoism of file forms — wu wei, no forcing.
+
+`tangleAndRead` implements this principle: it tangles a specific file from literate source at nix eval time (via IFD), strips entangled markers, and returns clean content. The form emerges at the exact moment of need, is consumed, and dissolves. No committed JSON sitting in the repo waiting to be read.
+
+Consumer example — npm deps without a committed `package.json`:
+```
+npmDeps = pkgs.importNpmLock.buildNodeModules {
+  package = builtins.fromJSON (literate-state-machine-wiki.lib.tangleAndRead {
+    inherit pkgs; src = ./literate.lit.mdx; file = "package.json";
+  });
+};
+```
+
+The only exception: lockfiles (`flake.lock`, `package-lock.json`) are auto-generated artifacts committed for reproducibility, like version-pinned snapshots. They are not literate because there is no prose to write about SHA hashes.
+
 ## Language-agnostic
 
 Entangled tangles any language — the code block annotation declares the language and target file. The default `entangled.toml` includes language tables for TypeScript, Nix, CSS, HTML, Rust, Python, Bash, YAML, and JSON. Add more by overriding the config.
