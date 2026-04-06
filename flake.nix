@@ -39,7 +39,7 @@
           case "''${1:-}" in
             build)
               echo "[literate-state-machine-wiki] Building literate project..."
-              nix build "''${2:-.}#literate-verified" "''${@:3}"
+              nix build --no-link "''${2:-.}" "''${@:3}"
               echo "[literate-state-machine-wiki] Build complete."
               ;;
             *)
