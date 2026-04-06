@@ -350,6 +350,9 @@ LITCHECK
         chmod -R u+w $out
         cd $out
         rm -f .entangled/filedb.json
+        cat > entangled.toml << 'TOML'
+        ${config.defaultEntangledToml}
+        TOML
         ${pipeline.tangleProject { inherit stripGeneratedMarkers; }}
       '';
 
