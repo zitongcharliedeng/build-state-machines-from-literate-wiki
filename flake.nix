@@ -97,7 +97,9 @@
             pkgs.runCommand "tangle-for-eval" {
               nativeBuildInputs = [ (config.entangledFor pkgs) (config.pythonFor pkgs) ];
             } ''
-              mkdir -p build && cp -r ${src}/. build/ && cd build
+              cp -r ${src}/. build/
+              chmod -R u+w build
+              cd build
               cat > entangled.toml <<'TOML'
 ${config.defaultEntangledToml}
 TOML
