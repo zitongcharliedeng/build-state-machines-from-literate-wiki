@@ -86,7 +86,27 @@
           };
         };
 
-        lib = { inherit init; inherit (config) defaultEntangledToml; };
+        lib = {
+          inherit init;
+          inherit (config) defaultEntangledToml;
+
+          # tangleAndRead: forms emerge when needed (IFD wrapped elegantly)
+          # Tangles literate source, reads a specific file at nix eval time
+          # The file only exists as JSON/TS/etc at the moment it's consumed
+          tangleAndRead = { pkgs, src, file }: builtins.readFile "${
+            pkgs.runCommand "tangle-for-eval" {
+              nativeBuildInputs = [ (config.entangledFor pkgs) (config.pythonFor pkgs) ];
+            } ''
+              mkdir -p build && cp -r ${src}/. build/ && cd build
+              cat > entangled.toml <<'TOML'
+${config.defaultEntangledToml}
+TOML
+              entangled tangle --force 2>/dev/null
+              mkdir -p $out
+              cp ${file} $out/ 2>/dev/null || (echo "ERROR: ${file} not found after tangle" && exit 1)
+            ''
+          }/${file}";
+        };
 
         # Library's own devShell — for developing literate-state-machine-wiki itself.
         # Consumers get their own devShell from lib.init with the CLI included.
