@@ -104,6 +104,7 @@
 ${config.defaultEntangledToml}
 TOML
               entangled tangle --force 2>/dev/null
+              ${pipeline.stripEntangledMarkers}
               mkdir -p $out
               cp ${file} $out/ 2>/dev/null || (echo "ERROR: ${file} not found after tangle" && exit 1)
             ''
