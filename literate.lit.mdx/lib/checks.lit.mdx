@@ -77,11 +77,15 @@ for root, _, files in os.walk(source_dir):
                     has_intro = True
                 first_block = True
 
+                # Non-tangleable languages — prose illustrations, diagrams
+                prose_langs = {"text", "ascii", "plaintext", "mermaid", "markdown", "md", "diff", "console", "log", "output", "example"}
+                is_prose_lang = any(trimmed.startswith(fence + lang) or trimmed.startswith(fence + "{." + lang) for lang in prose_langs)
+
                 if not has_annotation and trimmed == fence:
                     print(f"  error core/no-invisible-blocks: {path}:{num}")
                     print(f"    Unannotated code block - invisible to Entangled")
                     violations += 1
-                elif not has_annotation and trimmed != fence:
+                elif not has_annotation and trimmed != fence and not is_prose_lang:
                     print(f"  error core/annotation-required: {path}:{num}")
                     print(f"    Code block missing file= annotation")
                     errors += 1
