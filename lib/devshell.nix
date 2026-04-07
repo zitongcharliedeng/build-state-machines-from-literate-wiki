@@ -22,6 +22,8 @@
     in pkgs.mkShell {
       packages = [ (config.entangledFor pkgs) ] ++ basePackages ++ extraPackages;
       shellHook = ''
+        build() { nix build --no-link --print-out-paths "$@"; }
+        export -f build
         ${envExports}
         echo "[literate-state-machine-wiki] entangled: $(entangled --version 2>/dev/null || echo 'NOT FOUND')"
         ${lib.optionalString (tangleCommand != null) ''
