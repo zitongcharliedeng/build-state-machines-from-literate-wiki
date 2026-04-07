@@ -457,21 +457,38 @@ TOML
         ${pipeline.tangleProject { inherit stripGeneratedMarkers; }}
       '';
 
-      # Filter postTangle by --until (if set, only run hooks up to and including the named one)
+      # Validate needs: every needs reference must name a hook that appears EARLIER in the list
+      _validateNeeds = hooks:
+        let
+          go = seen: remaining:
+            if remaining == [] then true
+            else let h = builtins.head remaining; rest = builtins.tail remaining;
+              needs = h.needs or [];
+              missing = builtins.filter (n: ! builtins.elem n seen) needs;
+            in if missing != [] then
+              builtins.throw "Hook '${h.name}' needs [${builtins.concatStringsSep ", " missing}] but they appear after it or don't exist. Reorder your postTangle list."
+            else go (seen ++ [h.name]) rest;
+          in go [] hooks;
+      _needsValid = _validateNeeds postTangle;
+
+      # Filter postTangle by --until: resolve transitive deps of target hook, keep only those
       effectivePostTangle = if until == null then postTangle else
         let
-          takeUntil = name: hooks:
-            let go = acc: remaining:
-              if remaining == [] then acc
-              else let h = builtins.head remaining; rest = builtins.tail remaining;
-              in if h.name == name then acc ++ [h]
-              else go (acc ++ [h]) rest;
-            in go [] hooks;
-        in takeUntil until postTangle;
+          hooksByName = builtins.listToAttrs (map (h: { name = h.name; value = h; }) postTangle);
+          # Resolve transitive closure of needs for a given hook name
+          closure = name: visited:
+            if builtins.elem name visited then visited
+            else let
+              hook = hooksByName.${name};
+              needs = hook.needs or [];
+              withDeps = builtins.foldl' (acc: n: closure n acc) (visited ++ [name]) needs;
+            in withDeps;
+          needed = closure until [];
+        in builtins.filter (h: builtins.elem h.name needed) postTangle;
 
       # Stage 3: Post-tangle hooks — consumer's commands, water model (depends on tangledTree)
       # Output: the full tree WITH any hook artifacts (e.g. dist/ from vite build)
-      postTangled = if effectivePostTangle == [] then tangledTree else
+      postTangled = assert _needsValid; if effectivePostTangle == [] then tangledTree else
         pkgs.runCommand "literate-post-tangled" {
           nativeBuildInputs = collectNativeBuildInputs effectivePostTangle;
         } ''
