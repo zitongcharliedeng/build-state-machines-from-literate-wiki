@@ -58,6 +58,24 @@ for root, _, files in os.walk(source_dir):
                     has_intro = True
                 first_block = True
 
+                # Warn on bootstrap files (as-a-real-non-nix-store-file)
+                if "as-a-real-non-nix-store-file=" in trimmed:
+                    reason_match = re.search(r'as-a-real-non-nix-store-file="([^"]*)"', trimmed)
+                    reason = reason_match.group(1) if reason_match else "no reason given"
+                    print(f"  warn core/bootstrap-file: {path}:{num}")
+                    print(f"    This file exists outside the nix store: {reason}")
+                    violations += 1
+
+                # Warn on absolute file= paths (antipattern — prefer relative)
+                if has_annotation:
+                    file_match = re.search(r'file=([^\s}"]+)', trimmed)
+                    if file_match:
+                        target = file_match.group(1)
+                        if target.startswith("/"):
+                            print(f"  warn core/absolute-path: {path}:{num}")
+                            print(f"    Absolute file= path '{target}' — prefer relative paths")
+                            violations += 1
+
                 if has_annotation and enforce_dirs and "as-a-real-non-nix-store-file=" not in trimmed:
                     file_match = re.search(r'file=([^\s}"]+)', trimmed)
                     if file_match:
