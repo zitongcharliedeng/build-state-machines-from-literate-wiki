@@ -407,7 +407,8 @@ Five stages, four gates:
     maxBlockLength ? 50,
     enforceDirectoryMatch ? false,
     stripGeneratedMarkers ? true,
-    postTangle ? []
+    postTangle ? [],
+    until ? null
   }:
     let
       allPreChecks = mkDefaultPreTangleChecks {
@@ -442,17 +443,29 @@ TOML
         ${pipeline.tangleProject { inherit stripGeneratedMarkers; }}
       '';
 
+      # Filter postTangle by --until (if set, only run hooks up to and including the named one)
+      effectivePostTangle = if until == null then postTangle else
+        let
+          takeUntil = name: hooks:
+            let go = acc: remaining:
+              if remaining == [] then acc
+              else let h = builtins.head remaining; rest = builtins.tail remaining;
+              in if h.name == name then acc ++ [h]
+              else go (acc ++ [h]) rest;
+            in go [] hooks;
+        in takeUntil until postTangle;
+
       # Stage 3: Post-tangle hooks — consumer's commands, water model (depends on tangledTree)
       # Output: the full tree WITH any hook artifacts (e.g. dist/ from vite build)
-      postTangled = if postTangle == [] then tangledTree else
+      postTangled = if effectivePostTangle == [] then tangledTree else
         pkgs.runCommand "literate-post-tangled" {
-          nativeBuildInputs = collectNativeBuildInputs postTangle;
+          nativeBuildInputs = collectNativeBuildInputs effectivePostTangle;
         } ''
           set -euo pipefail
           cp -r ${tangledTree}/. $out/
           chmod -R u+w $out
           cd $out
-          ${renderChecksWaterModel "post" postTangle}
+          ${renderChecksWaterModel "post" effectivePostTangle}
         '';
 
     in {
