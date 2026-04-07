@@ -475,6 +475,9 @@ TOML
       effectivePostTangle = if until == null then postTangle else
         let
           hooksByName = builtins.listToAttrs (map (h: { name = h.name; value = h; }) postTangle);
+          _untilExists = if !(builtins.hasAttr until hooksByName) then
+            builtins.throw "until='${until}' does not name a postTangle hook. Available: ${builtins.concatStringsSep ", " (map (h: h.name) postTangle)}"
+          else true;
           # Resolve transitive closure of needs for a given hook name
           closure = name: visited:
             if builtins.elem name visited then visited
@@ -483,7 +486,7 @@ TOML
               needs = hook.needs or [];
               withDeps = builtins.foldl' (acc: n: closure n acc) (visited ++ [name]) needs;
             in withDeps;
-          needed = closure until [];
+          needed = assert _untilExists; closure until [];
         in builtins.filter (h: builtins.elem h.name needed) postTangle;
 
       # Stage 3: Post-tangle hooks — consumer's commands, water model (depends on tangledTree)
