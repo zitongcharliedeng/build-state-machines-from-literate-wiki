@@ -12,7 +12,7 @@ This module owns all validation logic for literate-state-machine-wiki projects, 
 
 The module uses `rec` so helpers can reference each other by name without argument threading.
 
-```{.nix file=checks.nix as-real-file-path="flake.nix imports this module"}
+```{.nix file=checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
 # ~~ This file is generated from literate.lit.mdx/nix/checks.lit.mdx
 { lib, config, pipeline }:
 rec {
@@ -22,7 +22,7 @@ rec {
 
 Two checks run before Entangled writes output: `literate-structure` rejects code blocks that start with `//`/`/*`/`*/` (explanations belong in prose) and enforces minimum prose density; `input-title-tooltips` rejects `<input title=>` in favor of accessible info-button dialogs.
 
-```{.nix file=checks.nix as-real-file-path="flake.nix imports this module"}
+```{.nix file=checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
   mkDefaultPreTangleChecks = {
     sourceDir ? "literate",
     forbidTsComments ? true,
@@ -77,7 +77,7 @@ for root, _, files in os.walk(source_dir):
                     has_intro = True
                 first_block = True
 
-                if has_annotation and enforce_dirs and "as-absolute-file-path=" not in trimmed:
+                if has_annotation and enforce_dirs and "as-a-real-non-nix-store-file=" not in trimmed:
                     file_match = re.search(r'file=([^\s}"]+)', trimmed)
                     if file_match:
                         target = file_match.group(1)
@@ -86,7 +86,7 @@ for root, _, files in os.walk(source_dir):
                         expected_dir = "" if src_rel_dir == "." else src_rel_dir
                         if target_dir != expected_dir:
                             print(f"  error core/directory-mismatch: {path}:{num}")
-                            print(f"    file={target} does not match source dir {src_rel_dir}/. Use as-real-file-path= to override.")
+                            print(f"    file={target} does not match source dir {src_rel_dir}/. Use as-a-real-non-nix-store-file= for bootstrap files.")
                             errors += 1
                 continue
 
@@ -151,7 +151,7 @@ LITCHECK
 
 No default post-tangle checks. Block-length is already checked pre-tangle with configurable `maxBlockLength`.
 
-```{.nix file=checks.nix as-real-file-path="flake.nix imports this module"}
+```{.nix file=checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
   mkDefaultPostTangleChecks = {
     sourceDir ? "literate"
   }:
@@ -162,7 +162,7 @@ No default post-tangle checks. Block-length is already checked pre-tangle with c
 
 `collectNativeBuildInputs` flattens per-check dependency lists; `renderChecks` builds the bash script that runs them, wrapping warn-mode checks in `set +e` so they report without aborting.
 
-```{.nix file=checks.nix as-real-file-path="flake.nix imports this module"}
+```{.nix file=checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
   collectNativeBuildInputs = checks:
     builtins.concatLists (map (check: check.nativeBuildInputs or [ ]) checks);
 
@@ -195,7 +195,7 @@ No default post-tangle checks. Block-length is already checked pre-tangle with c
 
 `renderChecksWaterModel` runs ALL checks in a stage, collects all violations, and shows everything at once. Only fails at the end if any error-mode check failed. This is the O(n) water model — contrast with `renderChecks` which aborts at the first error.
 
-```{.nix file=checks.nix as-real-file-path="flake.nix imports this module"}
+```{.nix file=checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
   renderChecksWaterModel = phase: checks: ''
     _lsmw_errors=0
     ${builtins.concatStringsSep "\n" (map
@@ -229,7 +229,7 @@ No default post-tangle checks. Block-length is already checked pre-tangle with c
 
 `mkProjectCheck` wraps a single check in a nix derivation, making each custom check independently addressable and cacheable as `nix build .#checks.x86_64-linux.post-my-check`.
 
-```{.nix file=checks.nix as-real-file-path="flake.nix imports this module"}
+```{.nix file=checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
   mkProjectCheck = {
     pkgs, src, name, command,
     nativeBuildInputs ? [ ],
@@ -251,7 +251,7 @@ No default post-tangle checks. Block-length is already checked pre-tangle with c
 
 `checkIdempotent` runs tangle twice and diffs the results (any difference is a hard failure); `checkImmutable` asserts every output file has permissions `444`.
 
-```{.nix file=checks.nix as-real-file-path="flake.nix imports this module"}
+```{.nix file=checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
   checkIdempotent = {
     src, name ? "idempotent-check", pkgs,
  stripGeneratedMarkers ? true
@@ -284,7 +284,7 @@ No default post-tangle checks. Block-length is already checked pre-tangle with c
 
 Each check in `preTangleChecks` / `postTangleChecks` gets its own named derivation prefixed `pre-` or `post-`, with warn-mode checks exiting 0 so the derivation succeeds and caches.
 
-```{.nix file=checks.nix as-real-file-path="flake.nix imports this module"}
+```{.nix file=checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
   makeNamedChecks = {
     phase, checks, pkgs, src, stripGeneratedMarkers
   }:
@@ -322,7 +322,7 @@ Each check in `preTangleChecks` / `postTangleChecks` gets its own named derivati
 
 `makeChecks` is used by the library's own flake for self-testing via `nix flake check`. Consumers call `makeVerify` instead — see below. Produces four standard derivations (`tangle-and-check`, `tangle-succeeds`, `tangle-idempotent`, `tangle-immutable`) plus one named derivation per entry in `preTangleChecks` / `postTangleChecks`.
 
-```{.nix file=checks.nix as-real-file-path="flake.nix imports this module"}
+```{.nix file=checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
   makeChecks = {
     src, pkgs,
     sourceDir ? "literate",
@@ -379,7 +379,7 @@ Five stages, four gates:
 4. `tested` — consumer tests run on the tree (water model)
 5. `default` — extracts tangled targets with chmod 444 into nix store
 
-```{.nix file=checks.nix as-real-file-path="flake.nix imports this module"}
+```{.nix file=checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
   makeVerify = {
     src, pkgs,
     sourceDir ? "literate.lit.mdx",

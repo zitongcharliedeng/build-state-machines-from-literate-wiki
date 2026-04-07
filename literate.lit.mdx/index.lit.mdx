@@ -97,8 +97,8 @@ The pre-tangle checks are language-agnostic (they inspect `.lit.mdx` structure, 
 
 Most output goes to nix store. A few files are committed because nix and GitHub require them at fixed paths:
 
-- `flake.nix` + `lib/*.nix` — nix can't evaluate without them (`as-real-file-path=`)
-- `.github/workflows/check.yml` — GitHub requires fixed path (`as-real-file-path=`)
+- `flake.nix` + `lib/*.nix` — nix can't evaluate without them (`as-a-real-non-nix-store-file=`)
+- `.github/workflows/check.yml` — GitHub requires fixed path (`as-a-real-non-nix-store-file=`)
 
 These are read-only (444), carry entangled markers pointing to their literate source, and are explicitly documented exceptions.
 

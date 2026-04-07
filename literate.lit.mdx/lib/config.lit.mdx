@@ -20,7 +20,7 @@ The `defaultEntangledToml` string is the standard language table for literate-st
 
 The watch list covers both `.lit.md` (plain markdown) and `.lit.mdx` (MDX with JSX) extensions. Projects that only use one extension can override `entangled.toml` directly — this default is intentionally permissive.
 
-```{.nix file=config.nix as-real-file-path="flake.nix imports this module"}
+```{.nix file=config.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
 { lib, entangledInput }:
 {
   defaultEntangledToml = ''
@@ -81,7 +81,7 @@ These three helpers follow the same pattern: try the most specific attribute fir
 
 `entangledFor` resolves the entangled binary from the flake input rather than from nixpkgs. Entangled is not in nixpkgs stable. The `entangledInput` argument is the `entangled` flake input — passed in at construction time so this module does not close over any global state.
 
-```{.nix file=config.nix as-real-file-path="flake.nix imports this module"}
+```{.nix file=config.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
 
   entangledFor = pkgs: entangledInput.packages.${pkgs.stdenv.hostPlatform.system}.default;
 

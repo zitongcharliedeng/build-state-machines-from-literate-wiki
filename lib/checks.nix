@@ -58,7 +58,7 @@ for root, _, files in os.walk(source_dir):
                     has_intro = True
                 first_block = True
 
-                if has_annotation and enforce_dirs and "as-absolute-file-path=" not in trimmed:
+                if has_annotation and enforce_dirs and "as-a-real-non-nix-store-file=" not in trimmed:
                     file_match = re.search(r'file=([^\s}"]+)', trimmed)
                     if file_match:
                         target = file_match.group(1)
@@ -67,7 +67,7 @@ for root, _, files in os.walk(source_dir):
                         expected_dir = "" if src_rel_dir == "." else src_rel_dir
                         if target_dir != expected_dir:
                             print(f"  error core/directory-mismatch: {path}:{num}")
-                            print(f"    file={target} does not match source dir {src_rel_dir}/. Use as-real-file-path= to override.")
+                            print(f"    file={target} does not match source dir {src_rel_dir}/. Use as-a-real-non-nix-store-file= for bootstrap files.")
                             errors += 1
                 continue
 

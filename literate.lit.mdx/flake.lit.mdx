@@ -16,7 +16,7 @@ The flake is deliberately thin. All logic lives in the modules:
 - [[lib/checks]] — pre-tangle, post-tangle, and structural validation
 - [[lib/devshell]] — development environment with auto-tangle
 
-``` {.nix file=flake.nix as-real-file-path="nix requires flake.nix in repo (bootstrap paradox)"}
+``` {.nix file=flake.nix as-a-real-non-nix-store-file="nix requires flake.nix in repo (bootstrap paradox)"}
 {
   description = "literate-state-machine-wiki — my opinionated tangle";
 
