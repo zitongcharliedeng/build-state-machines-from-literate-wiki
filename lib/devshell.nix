@@ -6,7 +6,7 @@
     basePackages ? [ (config.nodejsFor pkgs) (config.pythonFor pkgs) ],
     extraPackages ? [ ],
     env ? { },
-    sourceGlobs ? [ "literate/*.lit.md" "literate/**/*.lit.md" ],
+    sourceGlobs ? [ "literate.lit.mdx/*.lit.mdx" "literate.lit.mdx/**/*.lit.mdx" ],
     tangleCommand ? null,
     shellHook ? ""
   }:

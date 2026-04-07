@@ -146,10 +146,7 @@ LITCHECK
     ];
 # ~~  ~/~ end
 # ~~  ~/~ begin <<literate.lit.mdx/lib/checks.lit.mdx#lib/checks.nix>>[2]
-  mkDefaultPostTangleChecks = {
-    sourceDir ? "literate"
-  }:
-    [ ];
+  mkDefaultPostTangleChecks = [ ];
 # ~~  ~/~ end
 # ~~  ~/~ begin <<literate.lit.mdx/lib/checks.lit.mdx#lib/checks.nix>>[3]
   collectNativeBuildInputs = checks:
@@ -303,9 +300,9 @@ LITCHECK
 # ~~  ~/~ begin <<literate.lit.mdx/lib/checks.lit.mdx#lib/checks.nix>>[8]
   makeChecks = {
     src, pkgs,
-    sourceDir ? "literate",
+    sourceDir ? "literate.lit.mdx",
     forbidTsComments ? true,
-    tooltipCheckFile ? "literate/index.lit.md",
+    tooltipCheckFile ? null,
     minProseLines ? 3,
     maxBlockLength ? 50,
     enforceDirectoryMatch ? false,
@@ -315,7 +312,7 @@ LITCHECK
   }:
     let
       allPreChecks = (mkDefaultPreTangleChecks { inherit sourceDir forbidTsComments tooltipCheckFile minProseLines maxBlockLength enforceDirectoryMatch; }) ++ preTangleChecks;
-      allPostChecks = (mkDefaultPostTangleChecks { inherit sourceDir; }) ++ postTangleChecks;
+      allPostChecks = mkDefaultPostTangleChecks ++ postTangleChecks;
       tangled = pipeline.tangle { inherit src pkgs stripGeneratedMarkers; };
     in {
       tangle-and-check = pkgs.runCommand "literate-state-machine-wiki-tangle-and-check" {
