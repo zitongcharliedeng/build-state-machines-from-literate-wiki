@@ -182,23 +182,37 @@ LITCHECK
 # ~~  ~/~ begin <<literate.lit.mdx/lib/checks.lit.mdx#lib/checks.nix>>[4]
   renderChecksWaterModel = phase: checks: ''
     _lsmw_errors=0
+    _lsmw_passed=""
     ${builtins.concatStringsSep "\n" (map
-      (check: ''
-        echo "[literate-state-machine-wiki:${phase}] ${check.description or check.name}"
-        set +e
-        (
-          cd ${lib.escapeShellArg (check.cwd or ".")}
-          ${check.command}
-        )
-        _lsmw_status=$?
-        set -e
-        if [ "$_lsmw_status" -ne 0 ]; then
-          ${if (check.mode or "error") == "warn" then ''
-            echo "[literate-state-machine-wiki:${phase}] WARNING: ${check.name} failed"
-          '' else ''
-            echo "[literate-state-machine-wiki:${phase}] ERROR: ${check.name} failed"
-            _lsmw_errors=$((_lsmw_errors + 1))
-          ''}
+      (check:
+        let
+          needs = check.needs or [];
+          needsCheck = if needs == [] then "true" else
+            builtins.concatStringsSep " && " (map (n: ''echo "$_lsmw_passed" | grep -qw "${n}"'') needs);
+        in ''
+        # Hook: ${check.name} ${if needs != [] then "needs: ${builtins.concatStringsSep ", " needs}" else ""}
+        if ${needsCheck}; then
+          echo "[literate-state-machine-wiki:${phase}] ${check.description or check.name}"
+          set +e
+          (
+            cd ${lib.escapeShellArg (check.cwd or ".")}
+            ${check.command}
+          )
+          _lsmw_status=$?
+          set -e
+          if [ "$_lsmw_status" -ne 0 ]; then
+            ${if (check.mode or "error") == "warn" then ''
+              echo "[literate-state-machine-wiki:${phase}] WARNING: ${check.name} failed"
+              _lsmw_passed="$_lsmw_passed ${check.name}"
+            '' else ''
+              echo "[literate-state-machine-wiki:${phase}] ERROR: ${check.name} failed"
+              _lsmw_errors=$((_lsmw_errors + 1))
+            ''}
+          else
+            _lsmw_passed="$_lsmw_passed ${check.name}"
+          fi
+        else
+          echo "[literate-state-machine-wiki:${phase}] SKIPPED: ${check.name} (needs not met: ${builtins.concatStringsSep ", " needs})"
         fi
       '')
       checks)}
