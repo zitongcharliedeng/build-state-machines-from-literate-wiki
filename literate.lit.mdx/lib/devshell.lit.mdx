@@ -30,7 +30,7 @@ Three layers compose in order:
 
 The caller's `shellHook` appends after all three layers, so consumer-specific messages and setup always run last.
 
-```{.nix file=devshell.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+```{.nix file=lib/devshell.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
 { lib, config }:
 {
   mkDevShell = {

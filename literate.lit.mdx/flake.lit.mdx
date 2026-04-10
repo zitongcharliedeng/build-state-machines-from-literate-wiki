@@ -96,14 +96,38 @@ The flake is deliberately thin. All logic lives in the modules:
         sourceDir = "literate.lit.mdx";
         maxBlockLength = 200;
       }) // {
-        # Library-only checks — self-testing, NOT inherited by consumers
-        checks.${system} = {
-          tangle-idempotent = checksLib.checkIdempotent { src = ./.; inherit pkgs; };
-          tangle-immutable = checksLib.checkImmutable {
-            tangled = pipeline.tangle { inherit pkgs; src = ./.; };
-            inherit pkgs;
-          };
-        };
+        # Library-only checks — self-testing, NOT inherited by consumers.
+        # Integration and water-model tests are imported once and prefixed.
+        checks.${system} =
+          let
+            integrationTests = import ./tests/integration.nix {
+              inherit pkgs lib;
+              lsmwInit = init;
+            };
+            waterModelTests = import ./tests/water-model.nix {
+              inherit pkgs lib checksLib;
+            };
+            prefixed = prefix: lib.mapAttrs' (name: value:
+              lib.nameValuePair "${prefix}-${name}" value);
+          in {
+            tangle-idempotent = checksLib.checkIdempotent { src = ./.; inherit pkgs; };
+            tangle-immutable = checksLib.checkImmutable {
+              tangled = pipeline.tangle { inherit pkgs; src = ./.; };
+              inherit pkgs;
+            };
+
+            # Unit tests — pure nix function tests via lib.runTests
+            unit-tests = import ./tests/unit-check.nix { inherit pkgs lib checksLib; };
+
+            # Self-hosting bitwise check — committed bootstrap matches tangled output
+            self-host-check = import ./tests/self-host.nix {
+              inherit pkgs lib;
+              src = ./.;
+              pipelineLib = pipeline;
+            };
+          }
+          // prefixed "integration" integrationTests
+          // prefixed "water-model" waterModelTests;
 
         lib = {
           inherit init;

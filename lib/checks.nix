@@ -159,6 +159,7 @@ LITCHECK
           echo "[literate-state-machine-wiki:${phase}] ${check.description or check.name}"
           set +e
           (
+            set -euo pipefail
             cd ${lib.escapeShellArg (check.cwd or ".")}
             ${check.command}
           )
@@ -192,6 +193,7 @@ LITCHECK
           echo "[literate-state-machine-wiki:${phase}] ${check.description or check.name}"
           set +e
           (
+            set -euo pipefail
             cd ${lib.escapeShellArg (check.cwd or ".")}
             ${check.command}
           )
@@ -340,6 +342,43 @@ LITCHECK
     };
 # ~~  ~/~ end
 # ~~  ~/~ begin <<literate.lit.mdx/lib/checks.lit.mdx#lib/checks.nix>>[9]
+  # Walk hook list in order; every hook's needs must reference earlier hooks.
+  # Throws on forward reference or missing hook. Returns true on success.
+  validateNeeds = hooks:
+    let
+      go = seen: remaining:
+        if remaining == [] then true
+        else let h = builtins.head remaining; rest = builtins.tail remaining;
+          needs = h.needs or [];
+          missing = builtins.filter (n: ! builtins.elem n seen) needs;
+        in if missing != [] then
+          builtins.throw "Hook '${h.name}' needs [${builtins.concatStringsSep ", " missing}] but they appear after it or don't exist. Reorder your postTangle list."
+        else go (seen ++ [h.name]) rest;
+    in go [] hooks;
+
+  # Transitive closure of needs for a hook, as a list (order not preserved).
+  # hooksByName: attrset {hookname = hook;}. Uses visited accumulator to handle cycles.
+  resolveClosure = { hooksByName, name, visited ? [] }:
+    if builtins.elem name visited then visited
+    else let
+      hook = hooksByName.${name};
+      needs = hook.needs or [];
+      withSelf = visited ++ [name];
+    in builtins.foldl' (acc: n: resolveClosure { inherit hooksByName; name = n; visited = acc; }) withSelf needs;
+
+  # Filter postTangle list by until target. Returns full list if until is null.
+  # Preserves declaration order within the closure.
+  filterUntil = { postTangle, until }:
+    if until == null then postTangle else
+    let
+      hooksByName = builtins.listToAttrs (map (h: { name = h.name; value = h; }) postTangle);
+      _untilExists = if !(builtins.hasAttr until hooksByName) then
+        builtins.throw "until='${until}' does not name a postTangle hook. Available: ${builtins.concatStringsSep ", " (map (h: h.name) postTangle)}"
+      else true;
+      needed = assert _untilExists; resolveClosure { inherit hooksByName; name = until; };
+    in builtins.filter (h: builtins.elem h.name needed) postTangle;
+# ~~  ~/~ end
+# ~~  ~/~ begin <<literate.lit.mdx/lib/checks.lit.mdx#lib/checks.nix>>[10]
   makeVerify = {
     src, pkgs,
     sourceDir ? "literate.lit.mdx",
@@ -385,37 +424,8 @@ TOML
         ${pipeline.tangleProject { inherit stripGeneratedMarkers; }}
       '';
 
-      # Validate needs: every needs reference must name a hook that appears EARLIER in the list
-      _validateNeeds = hooks:
-        let
-          go = seen: remaining:
-            if remaining == [] then true
-            else let h = builtins.head remaining; rest = builtins.tail remaining;
-              needs = h.needs or [];
-              missing = builtins.filter (n: ! builtins.elem n seen) needs;
-            in if missing != [] then
-              builtins.throw "Hook '${h.name}' needs [${builtins.concatStringsSep ", " missing}] but they appear after it or don't exist. Reorder your postTangle list."
-            else go (seen ++ [h.name]) rest;
-          in go [] hooks;
-      _needsValid = _validateNeeds postTangle;
-
-      # Filter postTangle by --until: resolve transitive deps of target hook, keep only those
-      effectivePostTangle = if until == null then postTangle else
-        let
-          hooksByName = builtins.listToAttrs (map (h: { name = h.name; value = h; }) postTangle);
-          _untilExists = if !(builtins.hasAttr until hooksByName) then
-            builtins.throw "until='${until}' does not name a postTangle hook. Available: ${builtins.concatStringsSep ", " (map (h: h.name) postTangle)}"
-          else true;
-          # Resolve transitive closure of needs for a given hook name
-          closure = name: visited:
-            if builtins.elem name visited then visited
-            else let
-              hook = hooksByName.${name};
-              needs = hook.needs or [];
-              withDeps = builtins.foldl' (acc: n: closure n acc) (visited ++ [name]) needs;
-            in withDeps;
-          needed = assert _untilExists; closure until [];
-        in builtins.filter (h: builtins.elem h.name needed) postTangle;
+      _needsValid = validateNeeds postTangle;
+      effectivePostTangle = filterUntil { inherit postTangle until; };
 
       # Stage 3: Post-tangle hooks — consumer's commands, water model (depends on tangledTree)
       # Output: the full tree WITH any hook artifacts (e.g. dist/ from vite build)

@@ -12,7 +12,7 @@ This module owns all validation logic for literate-state-machine-wiki projects, 
 
 The module uses `rec` so helpers can reference each other by name without argument threading.
 
-```{.nix file=checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+```{.nix file=lib/checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
 # ~~ This file is generated from literate.lit.mdx/nix/checks.lit.mdx
 { lib, config, pipeline }:
 rec {
@@ -22,7 +22,7 @@ rec {
 
 Two checks run before Entangled writes output: `literate-structure` rejects code blocks that start with `//`/`/*`/`*/` (explanations belong in prose) and enforces minimum prose density; `input-title-tooltips` rejects `<input title=>` in favor of accessible info-button dialogs.
 
-```{.nix file=checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+```{.nix file=lib/checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
   mkDefaultPreTangleChecks = {
     sourceDir ? "literate",
     forbidTsComments ? true,
@@ -169,7 +169,7 @@ LITCHECK
 
 No default post-tangle checks. Block-length is already checked pre-tangle with configurable `maxBlockLength`.
 
-```{.nix file=checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+```{.nix file=lib/checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
   mkDefaultPostTangleChecks = [ ];
 ```
 
@@ -177,7 +177,7 @@ No default post-tangle checks. Block-length is already checked pre-tangle with c
 
 `collectNativeBuildInputs` flattens per-check dependency lists; `renderChecks` builds the bash script that runs them, wrapping warn-mode checks in `set +e` so they report without aborting.
 
-```{.nix file=checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+```{.nix file=lib/checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
   collectNativeBuildInputs = checks:
     builtins.concatLists (map (check: check.nativeBuildInputs or [ ]) checks);
 
@@ -188,6 +188,7 @@ No default post-tangle checks. Block-length is already checked pre-tangle with c
           echo "[literate-state-machine-wiki:${phase}] ${check.description or check.name}"
           set +e
           (
+            set -euo pipefail
             cd ${lib.escapeShellArg (check.cwd or ".")}
             ${check.command}
           )
@@ -210,7 +211,7 @@ No default post-tangle checks. Block-length is already checked pre-tangle with c
 
 `renderChecksWaterModel` runs ALL checks in a stage, collects all violations, and shows everything at once. Only fails at the end if any error-mode check failed. This is the O(n) water model — contrast with `renderChecks` which aborts at the first error.
 
-```{.nix file=checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+```{.nix file=lib/checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
   renderChecksWaterModel = phase: checks: ''
     _lsmw_errors=0
     _lsmw_passed=""
@@ -226,6 +227,7 @@ No default post-tangle checks. Block-length is already checked pre-tangle with c
           echo "[literate-state-machine-wiki:${phase}] ${check.description or check.name}"
           set +e
           (
+            set -euo pipefail
             cd ${lib.escapeShellArg (check.cwd or ".")}
             ${check.command}
           )
@@ -258,7 +260,7 @@ No default post-tangle checks. Block-length is already checked pre-tangle with c
 
 `mkProjectCheck` wraps a single check in a nix derivation, making each custom check independently addressable and cacheable as `nix build .#checks.x86_64-linux.post-my-check`.
 
-```{.nix file=checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+```{.nix file=lib/checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
   mkProjectCheck = {
     pkgs, src, name, command,
     nativeBuildInputs ? [ ],
@@ -280,7 +282,7 @@ No default post-tangle checks. Block-length is already checked pre-tangle with c
 
 `checkIdempotent` runs tangle twice and diffs the results (any difference is a hard failure); `checkImmutable` asserts every output file has permissions `444`.
 
-```{.nix file=checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+```{.nix file=lib/checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
   checkIdempotent = {
     src, name ? "idempotent-check", pkgs,
  stripGeneratedMarkers ? true
@@ -313,7 +315,7 @@ No default post-tangle checks. Block-length is already checked pre-tangle with c
 
 Each check in `preTangleChecks` / `postTangleChecks` gets its own named derivation prefixed `pre-` or `post-`, with warn-mode checks exiting 0 so the derivation succeeds and caches.
 
-```{.nix file=checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+```{.nix file=lib/checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
   makeNamedChecks = {
     phase, checks, pkgs, src, stripGeneratedMarkers
   }:
@@ -351,7 +353,7 @@ Each check in `preTangleChecks` / `postTangleChecks` gets its own named derivati
 
 `makeChecks` is used by the library's own flake for self-testing via `nix flake check`. Consumers call `makeVerify` instead — see below. Produces four standard derivations (`tangle-and-check`, `tangle-succeeds`, `tangle-idempotent`, `tangle-immutable`) plus one named derivation per entry in `preTangleChecks` / `postTangleChecks`.
 
-```{.nix file=checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+```{.nix file=lib/checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
   makeChecks = {
     src, pkgs,
     sourceDir ? "literate.lit.mdx",
@@ -394,6 +396,54 @@ Each check in `preTangleChecks` / `postTangleChecks` gets its own named derivati
     };
 ```
 
+## Hook DAG helpers — validateNeeds, resolveClosure, filterUntil
+
+These pure functions operate on the `postTangle` hook list. They are extracted to top level so they can be unit-tested directly (see `tests/unit.lit.mdx`). `makeVerify` calls them internally.
+
+**`validateNeeds`** — walks the hook list in declaration order, asserting every hook's `needs` list references hooks that appear **earlier**. This enforces topological order at eval time, so consumers get a clear error at `nix eval` rather than a cryptic failure during build. A hook that references a non-existent name, or a hook that appears after its dependents, throws with the offending hook name and the missing names.
+
+**`resolveClosure`** — given a target hook name and a `hooksByName` attrset, returns the transitive closure of `needs` as a list, including the target itself. Uses a `visited` accumulator to terminate on cycles (a cycle would short-circuit when it re-encounters a visited node). Order within the closure is not preserved — callers should filter the original ordered list to recover ordering.
+
+**`filterUntil`** — the public entry point used by `until = "hookname"`. When `until == null`, returns the full hook list unchanged. When set, asserts the target hook exists (clear error if not), resolves its transitive closure, and filters the original list to that closure while preserving declaration order.
+
+```{.nix file=lib/checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+  # Walk hook list in order; every hook's needs must reference earlier hooks.
+  # Throws on forward reference or missing hook. Returns true on success.
+  validateNeeds = hooks:
+    let
+      go = seen: remaining:
+        if remaining == [] then true
+        else let h = builtins.head remaining; rest = builtins.tail remaining;
+          needs = h.needs or [];
+          missing = builtins.filter (n: ! builtins.elem n seen) needs;
+        in if missing != [] then
+          builtins.throw "Hook '${h.name}' needs [${builtins.concatStringsSep ", " missing}] but they appear after it or don't exist. Reorder your postTangle list."
+        else go (seen ++ [h.name]) rest;
+    in go [] hooks;
+
+  # Transitive closure of needs for a hook, as a list (order not preserved).
+  # hooksByName: attrset {hookname = hook;}. Uses visited accumulator to handle cycles.
+  resolveClosure = { hooksByName, name, visited ? [] }:
+    if builtins.elem name visited then visited
+    else let
+      hook = hooksByName.${name};
+      needs = hook.needs or [];
+      withSelf = visited ++ [name];
+    in builtins.foldl' (acc: n: resolveClosure { inherit hooksByName; name = n; visited = acc; }) withSelf needs;
+
+  # Filter postTangle list by until target. Returns full list if until is null.
+  # Preserves declaration order within the closure.
+  filterUntil = { postTangle, until }:
+    if until == null then postTangle else
+    let
+      hooksByName = builtins.listToAttrs (map (h: { name = h.name; value = h; }) postTangle);
+      _untilExists = if !(builtins.hasAttr until hooksByName) then
+        builtins.throw "until='${until}' does not name a postTangle hook. Available: ${builtins.concatStringsSep ", " (map (h: h.name) postTangle)}"
+      else true;
+      needed = assert _untilExists; resolveClosure { inherit hooksByName; name = until; };
+    in builtins.filter (h: builtins.elem h.name needed) postTangle;
+```
+
 ## makeVerify — the consumer product
 
 `makeVerify` returns **packages**, not checks. The consumer calls `lib.init`, gets `packages.default`, runs `nix build`. Done.
@@ -408,7 +458,7 @@ Five stages, four gates:
 4. `tested` — consumer tests run on the tree (water model)
 5. `default` — extracts tangled targets with chmod 444 into nix store
 
-```{.nix file=checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+```{.nix file=lib/checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
   makeVerify = {
     src, pkgs,
     sourceDir ? "literate.lit.mdx",
@@ -454,37 +504,8 @@ TOML
         ${pipeline.tangleProject { inherit stripGeneratedMarkers; }}
       '';
 
-      # Validate needs: every needs reference must name a hook that appears EARLIER in the list
-      _validateNeeds = hooks:
-        let
-          go = seen: remaining:
-            if remaining == [] then true
-            else let h = builtins.head remaining; rest = builtins.tail remaining;
-              needs = h.needs or [];
-              missing = builtins.filter (n: ! builtins.elem n seen) needs;
-            in if missing != [] then
-              builtins.throw "Hook '${h.name}' needs [${builtins.concatStringsSep ", " missing}] but they appear after it or don't exist. Reorder your postTangle list."
-            else go (seen ++ [h.name]) rest;
-          in go [] hooks;
-      _needsValid = _validateNeeds postTangle;
-
-      # Filter postTangle by --until: resolve transitive deps of target hook, keep only those
-      effectivePostTangle = if until == null then postTangle else
-        let
-          hooksByName = builtins.listToAttrs (map (h: { name = h.name; value = h; }) postTangle);
-          _untilExists = if !(builtins.hasAttr until hooksByName) then
-            builtins.throw "until='${until}' does not name a postTangle hook. Available: ${builtins.concatStringsSep ", " (map (h: h.name) postTangle)}"
-          else true;
-          # Resolve transitive closure of needs for a given hook name
-          closure = name: visited:
-            if builtins.elem name visited then visited
-            else let
-              hook = hooksByName.${name};
-              needs = hook.needs or [];
-              withDeps = builtins.foldl' (acc: n: closure n acc) (visited ++ [name]) needs;
-            in withDeps;
-          needed = assert _untilExists; closure until [];
-        in builtins.filter (h: builtins.elem h.name needed) postTangle;
+      _needsValid = validateNeeds postTangle;
+      effectivePostTangle = filterUntil { inherit postTangle until; };
 
       # Stage 3: Post-tangle hooks — consumer's commands, water model (depends on tangledTree)
       # Output: the full tree WITH any hook artifacts (e.g. dist/ from vite build)
