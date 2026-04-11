@@ -1,10 +1,29 @@
-# ~~  ~/~ begin <<literate.lit.mdx/flake.lit.mdx#flake.nix>>[init]
 {
-  description = "literate-state-machine-wiki — my opinionated tangle";
+  description = "literate-state-machine-wiki — root bootstrap stub (see literate.lit.mdx/bootstrap.lit.mdx)";
+
+  # This file is HAND-MAINTAINED, not tangled from anywhere.
+  # It is the equivalent of GCC's ./configure — a tiny stable bootstrap
+  # that invokes the seed (entangled) to tangle the real source at
+  # eval time via IFD, then delegates to what the tangle produces.
+  #
+  # Everything else — lib/*.nix, tests/*.nix, init function — lives in
+  # literate.lit.mdx/ and is only materialized inside the nix store at
+  # eval time. Nothing derived is committed.
+  #
+  # If you need to change library logic, edit the .lit.mdx files under
+  # literate.lit.mdx/. Do not extend this file unless you are modifying
+  # the bootstrap contract itself.
 
   inputs = {
     nixpkgs.url = "nixpkgs";
     entangled.url = "github:zitongcharliedeng/entangled";
+  };
+
+  # IFD is load-bearing: the tangled derivation must be built at eval time
+  # so we can import lib/*.nix from its output. Declare it here so users
+  # don't need --impure on every command.
+  nixConfig = {
+    allow-import-from-derivation = true;
   };
 
   outputs = { self, nixpkgs, entangled }:
@@ -13,110 +32,76 @@
       pkgs = nixpkgs.legacyPackages.${system};
       lib = nixpkgs.lib;
 
-      config = import ./lib/config.nix { inherit lib; entangledInput = entangled; };
-      pipeline = import ./lib/pipeline.nix { inherit lib config; };
-      checksLib = import ./lib/checks.nix { inherit lib config pipeline; };
-      devshellLib = import ./lib/devshell.nix { inherit lib config; };
+      # Stage 0: IFD tangle literate source.
+      # Copies literate.lit.mdx into the store, writes a minimal entangled.toml,
+      # runs entangled tangle --force, and removes .entangled/ so the output is
+      # deterministic. The result is a full tangled tree we can import from.
+      tangled = pkgs.runCommand "lsmw-bootstrap-tangle" {
+        nativeBuildInputs = [ entangled.packages.${system}.default ];
+      } ''
+        mkdir -p $out
+        cp -r ${./literate.lit.mdx} $out/literate.lit.mdx
+        chmod -R u+w $out
+        cd $out
+        cat > entangled.toml <<'TOML'
+version = "2.0"
+literate_root = "literate.lit.mdx"
+watch_list = ["literate.lit.mdx/**/*.lit.mdx"]
+annotation = "standard"
+[[languages]]
+name = "Nix"
+identifiers = ["nix"]
+comment = { open = "# ~~ " }
+[[languages]]
+name = "TypeScript"
+identifiers = ["ts", "typescript"]
+comment = { open = "// ~~ " }
+[[languages]]
+name = "Python"
+identifiers = ["python", "py"]
+comment = { open = "# ~~ " }
+[[languages]]
+name = "Bash"
+identifiers = ["bash", "sh"]
+comment = { open = "# ~~ " }
+[[languages]]
+name = "YAML"
+identifiers = ["yaml", "yml"]
+comment = { open = "# ~~ " }
+TOML
+        entangled tangle --force
+        rm -rf .entangled
+      '';
 
-      init = {
-        pkgs,
-        src,
-        system ? "x86_64-linux",
-        postTangle ? [ ],
-        until ? null,
-        sourceDir ? "literate.lit.mdx",
-        forbidTsComments ? true,
-        minProseLines ? 3,
-        maxBlockLength ? 50,
-        enforceDirectoryMatch ? false
-      }:
-      let
-        verified = checksLib.makeVerify {
-          inherit pkgs src sourceDir forbidTsComments minProseLines maxBlockLength enforceDirectoryMatch;
-          inherit postTangle until;
-        };
-        cli = pkgs.writeShellScriptBin "literate-state-machine-wiki" ''
-          set -euo pipefail
-          case "''${1:-}" in
-            build)
-              echo "[literate-state-machine-wiki] Building literate project..."
-              nix build --no-link "''${2:-.}" "''${@:3}"
-              echo "[literate-state-machine-wiki] Build complete."
-              ;;
-            *)
-              echo "literate-state-machine-wiki — opinionated literate build tool"
-              echo ""
-              echo "Usage: literate-state-machine-wiki build [flake-ref]"
-              echo ""
-              echo "  build   Run the full escalating pipeline:"
-              echo "          pre-check → tangle → lint → test → install"
-              echo ""
-              echo "Building literate means: check prose, tangle code,"
-              echo "lint the code dialect, test, install to store."
-              exit 1
-              ;;
-          esac
-        '';
-      in {
-        packages.${system} = {
-          default = verified.default;
-          literate-verified = verified.default;
-          tangled = verified.tangled;
-          web-wiki = pipeline.buildWebWiki { inherit pkgs src; litSourceDir = sourceDir; };
-          inherit cli;
-        };
-        devShells.${system}.default = devshellLib.mkDevShell {
-          inherit pkgs;
-          extraPackages = [ cli ];
-        };
+      # Import the tangled library modules.
+      config = import "${tangled}/lib/config.nix" { inherit lib; entangledInput = entangled; };
+      pipeline = import "${tangled}/lib/pipeline.nix" { inherit lib config; };
+      checksLib = import "${tangled}/lib/checks.nix" { inherit lib config pipeline; };
+      devshellLib = import "${tangled}/lib/devshell.nix" { inherit lib config; };
+      initModule = import "${tangled}/lib/init.nix" {
+        inherit lib pkgs config pipeline checksLib devshellLib;
       };
+      inherit (initModule) init tangleAndRead;
     in
-      # Self-application: this flake uses itself
+      # Self-apply: the library uses itself to build itself.
       (init {
         inherit pkgs;
         src = ./.;
         sourceDir = "literate.lit.mdx";
         maxBlockLength = 200;
       }) // {
-        # Library-only checks — self-testing, NOT inherited by consumers
-        checks.${system} = {
-          tangle-idempotent = checksLib.checkIdempotent { src = ./.; inherit pkgs; };
-          tangle-immutable = checksLib.checkImmutable {
-            tangled = pipeline.tangle { inherit pkgs; src = ./.; };
-            inherit pkgs;
-          };
-        };
-
         lib = {
-          inherit init;
+          inherit init tangleAndRead;
           inherit (config) defaultEntangledToml;
-
-          # tangleAndRead: forms emerge when needed (IFD wrapped elegantly)
-          # Tangles literate source, reads a specific file at nix eval time
-          # The file only exists as JSON/TS/etc at the moment it's consumed
-          tangleAndRead = { pkgs, src, file }: builtins.readFile "${
-            pkgs.runCommand "tangle-for-eval" {
-              nativeBuildInputs = [ (config.entangledFor pkgs) (config.pythonFor pkgs) ];
-            } ''
-              cp -r ${src}/. build/
-              chmod -R u+w build
-              cd build
-              cat > entangled.toml <<'TOML'
-${config.defaultEntangledToml}
-TOML
-              entangled tangle --force 2>/dev/null
-              ${pipeline.stripEntangledMarkers}
-              mkdir -p $out
-              cp ${file} $out/ 2>/dev/null || (echo "ERROR: ${file} not found after tangle" && exit 1)
-            ''
-          }/${file}";
         };
 
-        # Library's own devShell — for developing literate-state-machine-wiki itself.
-        # Consumers get their own devShell from lib.init with the CLI included.
+        checks.${system} = initModule.mkChecks {
+          inherit pkgs tangled pipeline checksLib init;
+          src = ./.;
+        };
+
         devShells.${system}.default = devshellLib.mkDevShell {
           inherit pkgs;
         };
       };
 }
-# ~~  ~/~ end
