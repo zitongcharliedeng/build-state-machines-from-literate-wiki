@@ -38,7 +38,7 @@ The alternative is to commit `lib/*.nix` as a "Stage 0 bootstrap" that `flake.ni
 
 IFD eliminates that entirely. There is exactly one copy of `checks.nix` — it's defined in `literate.lit.mdx/lib/checks.lit.mdx`, and it only exists on disk inside the nix store after IFD tangle. Contributors cannot drift it because it is not a file they can edit.
 
-**The cost:** IFD breaks `--pure-eval` flag and is slower than direct imports because nix must build the tangle derivation before continuing evaluation. For a library meant to be used locally and in CI, this is acceptable. Hydra users who need pure-eval can tangle manually and point nix at the already-tangled tree.
+**The cost:** IFD is slower than direct imports because nix must build the tangle derivation before continuing evaluation. Hydra users who need pure-eval can tangle manually and point nix at the already-tangled tree. The root `flake.nix` declares `nixConfig.allow-import-from-derivation = true` so consumers do not need to pass `--impure` on every command — the library announces its impurity up front.
 
 ## What's committed at the root
 

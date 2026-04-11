@@ -19,6 +19,13 @@
     entangled.url = "github:zitongcharliedeng/entangled";
   };
 
+  # IFD is load-bearing: the tangled derivation must be built at eval time
+  # so we can import lib/*.nix from its output. Declare it here so users
+  # don't need --impure on every command.
+  nixConfig = {
+    allow-import-from-derivation = true;
+  };
+
   outputs = { self, nixpkgs, entangled }:
     let
       system = "x86_64-linux";
