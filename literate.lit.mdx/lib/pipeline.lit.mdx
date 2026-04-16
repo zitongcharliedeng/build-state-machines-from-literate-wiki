@@ -107,6 +107,140 @@ Composes `projectSetup`, `tangleProject`, and `installTargets` into a `pkgs.runC
     '';
 ```
 
+## enumerateLiterateFiles
+`enumerateLiterateFiles` walks `src` at eval time and returns a list of relative paths to every `.lit.mdx` and `.lit.md` file found under `sourceDir`. Used by `tanglePerFile` to build one derivation per literate source so a single-file edit invalidates only that file's tangle output, not the whole tree.
+```{.nix file=lib/pipeline.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+  enumerateLiterateFiles = { src, sourceDir }:
+    let
+      root = "${src}/${sourceDir}";
+      walk = dir: relDir:
+        let
+          entries = builtins.readDir dir;
+          names = builtins.attrNames entries;
+          resolve = name:
+            let
+              kind = entries.${name};
+              absPath = "${dir}/${name}";
+              relPath = if relDir == "" then name else "${relDir}/${name}";
+            in
+              if kind == "directory" then walk absPath relPath
+              else if kind == "regular" && (lib.hasSuffix ".lit.mdx" name || lib.hasSuffix ".lit.md" name) then [ relPath ]
+              else [];
+        in builtins.concatLists (map resolve names);
+    in walk root "";
+```
+
+## tangleOneFile
+`tangleOneFile` produces a derivation that tangles a single `.lit.mdx` file. The `watch_list` in `entangled.toml` is narrowed to just that one file so entangled's `.entangled/filedb.json` lists only this file's outputs; `installTargets` then copies only those to `$out`.
+
+Isolation is load-bearing: the derivation input is the **single file** read via `builtins.path`, not the whole `src` tree. If we substituted `${src}/${relPath}` we would embed the whole-tree store path as a string, re-hashing every per-file derivation on any sibling edit. `builtins.path { path = src + "/${sourceDir}/${relPath}"; name = ...; }` copies exactly one file into the store with a hash that depends only on that file's bytes, so an edit to sibling A leaves sibling B's derivation invariant.
+```{.nix file=lib/pipeline.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+  tangleOneFile = {
+    src,
+    sourceDir,
+    relPath,
+    pkgs,
+    stripGeneratedMarkers ? true
+  }:
+    let
+      safeName = lib.strings.sanitizeDerivationName "tangled-${relPath}";
+      sanitizedRelPath = lib.replaceStrings ["/" "."] ["-" "-"] relPath;
+      onePath = builtins.path {
+        path = src + "/${sourceDir}/${relPath}";
+        name = "litsrc-${sanitizedRelPath}";
+      };
+      watchEntry = "${sourceDir}/${relPath}";
+    in
+    pkgs.runCommand safeName {
+      nativeBuildInputs = [ (config.entangledFor pkgs) (config.pythonFor pkgs) ];
+      passthru = { inherit relPath; };
+    } ''
+      set -euo pipefail
+      mkdir -p build/${sourceDir}/${builtins.dirOf relPath}
+      cp ${onePath} build/${watchEntry}
+      chmod -R u+w build
+      cd build
+
+      cat > entangled.toml << 'TOML'
+      version = "2.0"
+      watch_list = ["${watchEntry}"]
+      annotation = "standard"
+
+      [[languages]]
+      name = "TypeScript"
+      identifiers = ["ts", "typescript"]
+      comment = { open = "// ~~ " }
+
+      [[languages]]
+      name = "Nix"
+      identifiers = ["nix"]
+      comment = { open = "# ~~ " }
+
+      [[languages]]
+      name = "CSS"
+      identifiers = ["css"]
+      comment = { open = "/* ~~ ", close = " */" }
+
+      [[languages]]
+      name = "HTML"
+      identifiers = ["html"]
+      comment = { open = "<!-- ~~ ", close = " -->" }
+
+      [[languages]]
+      name = "Rust"
+      identifiers = ["rust", "rs"]
+      comment = { open = "// ~~ " }
+
+      [[languages]]
+      name = "Python"
+      identifiers = ["python", "py"]
+      comment = { open = "# ~~ " }
+
+      [[languages]]
+      name = "Bash"
+      identifiers = ["bash", "sh"]
+      comment = { open = "# ~~ " }
+
+      [[languages]]
+      name = "YAML"
+      identifiers = ["yaml", "yml"]
+      comment = { open = "# ~~ " }
+
+      [[languages]]
+      name = "JSON"
+      identifiers = ["json"]
+      comment = { open = "// ~~ " }
+      TOML
+
+      rm -f .entangled/filedb.json
+      entangled tangle --force
+      ${lib.optionalString stripGeneratedMarkers stripEntangledMarkers}
+      ${installTargets}
+    '';
+```
+
+## tanglePerFile
+`tanglePerFile` fans out `tangleOneFile` across every literate source found by `enumerateLiterateFiles`, then merges the per-file `$out` trees into one store path via `pkgs.symlinkJoin`. The merged output is byte-identical to what `tangle` produces, but edits to one `.lit.mdx` now invalidate exactly one `runCommand` instead of re-tangling all 79 files. The `passthru.perFile` attribute exposes the individual per-file derivations for downstream tools that want to consume just one slice.
+```{.nix file=lib/pipeline.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+  tanglePerFile = {
+    src,
+    sourceDir,
+    pkgs,
+    stripGeneratedMarkers ? true,
+    name ? "tangled"
+  }:
+    let
+      files = enumerateLiterateFiles { inherit src sourceDir; };
+      perFileDrvs = map (relPath: tangleOneFile {
+        inherit src sourceDir relPath pkgs stripGeneratedMarkers;
+      }) files;
+      merged = pkgs.symlinkJoin {
+        inherit name;
+        paths = perFileDrvs;
+      };
+    in merged // { passthru = (merged.passthru or {}) // { perFile = perFileDrvs; inherit files; }; };
+```
+
 ## buildWebWiki
 Produces a deployable directory from literate sources, resolving `[[wiki links]]` to relative markdown links for GitHub Pages or any static host.
 ```{.nix file=lib/pipeline.nix as-a-real-non-nix-store-file="flake.nix imports this module"}

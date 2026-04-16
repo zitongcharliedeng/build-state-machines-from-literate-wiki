@@ -522,7 +522,7 @@ TOML
 
     in {
       default = postTangled;
-      tangled = pipeline.tangle { inherit src pkgs stripGeneratedMarkers; };
+      tangled = pipeline.tanglePerFile { inherit src pkgs sourceDir stripGeneratedMarkers; };
     };
 }
 ```
