@@ -220,7 +220,7 @@ Isolation is load-bearing: the derivation input is the **single file** read via 
 ```
 
 ## tanglePerFile
-`tanglePerFile` fans out `tangleOneFile` across every literate source found by `enumerateLiterateFiles`, then merges the per-file `$out` trees into one store path via `pkgs.symlinkJoin`. The merged output is byte-identical to what `tangle` produces, but edits to one `.lit.mdx` now invalidate exactly one `runCommand` instead of re-tangling all 79 files. The `passthru.perFile` attribute exposes the individual per-file derivations for downstream tools that want to consume just one slice.
+`tanglePerFile` fans out `tangleOneFile` across every literate source found by `enumerateLiterateFiles`, then merges the per-file `$out` trees into one store path via a copy-based `runCommand` (not `symlinkJoin`). Copying is load-bearing: consumer modules frequently use relative imports like `./SIBLING_DIR`, and symlinked merges cause Nix to resolve those imports through the symlink into the per-file output where the sibling doesn't exist. Copying produces one real directory with all tangled files side-by-side, so relative imports resolve correctly. Edits to one `.lit.mdx` still only invalidate that per-file derivation; the merge step rebuilds but is cheap (just `cp`). The `passthru.perFile` attribute exposes the individual per-file derivations for downstream tools that want to consume just one slice.
 ```{.nix file=lib/pipeline.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
   tanglePerFile = {
     src,
@@ -234,10 +234,16 @@ Isolation is load-bearing: the derivation input is the **single file** read via 
       perFileDrvs = map (relPath: tangleOneFile {
         inherit src sourceDir relPath pkgs stripGeneratedMarkers;
       }) files;
-      merged = pkgs.symlinkJoin {
-        inherit name;
-        paths = perFileDrvs;
-      };
+      merged = pkgs.runCommand name {
+        # Force rebuild when any per-file drv changes, but cp is cheap.
+        perFilePaths = perFileDrvs;
+      } ''
+        mkdir -p $out
+        for p in $perFilePaths; do
+          cp -rL --no-preserve=mode "$p"/. "$out"/
+          chmod -R u+w "$out"
+        done
+      '';
     in merged // { passthru = (merged.passthru or {}) // { perFile = perFileDrvs; inherit files; }; };
 ```
 
