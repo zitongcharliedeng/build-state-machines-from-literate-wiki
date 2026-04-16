@@ -1,0 +1,125 @@
+---
+title: Init Module — Consumer API
+description: The public init function and tangleAndRead helper — everything a consumer flake calls on the library
+tags: [nix, api, init, consumer, module]
+---
+
+# Init Module — Consumer API
+
+`init` is the one function consumers call. It takes a literate source directory and a list of `postTangle` hooks, runs the full pipeline, and returns a flake-shaped attrset with `packages`, `devShells`, and optionally `checks`. This module exists separately from `flake.nix` so the root bootstrap stub can `import` it after IFD-tangling the literate source — see [[bootstrap]] for why.
+
+## What init does
+
+The function composes four library stages:
+
+1. **Pre-tangle checks** — runs `mkDefaultPreTangleChecks` with the consumer's thresholds to validate literate source shape (prose density, bootstrap file annotations, block length).
+2. **Tangle** — runs entangled via `pipeline.tangle` to extract code blocks into a real tree.
+3. **Post-tangle hooks** — runs consumer-defined hooks in DAG order via `checksLib.makeVerify`, respecting `needs`, `until`, `mode`, and the water model.
+4. **Devshell** — exposes `devshellLib.mkDevShell` with the consumer CLI (`literate-state-machine-wiki build`) on PATH.
+
+## mkChecks — library-internal self-testing
+
+Consumers use `makeVerify` (returns packages) but the library itself needs to expose `checks.*` for `nix flake check`. `mkChecks` is a helper that wires the internal test suite (`unit`, `integration`, `water-model`, `self-host`) into the checks attrset. It takes the tangled source path and library modules, and returns a prefixed attrset ready to merge into `checks.${system}`.
+
+## tangleAndRead — IFD helper for consumers
+
+Consumers who need a tangled file at eval time (e.g. to derive `package.json` from `package.lit.mdx`) use `tangleAndRead`. It runs entangled inside a fixed-output-like derivation, then reads one specific file from the result. Gridinstruments uses this to feed `importNpmLock`/`bun2nix` with the package manifest without committing a JSON file.
+
+```{.nix file=lib/init.nix}
+# ~~ This file is generated from literate.lit.mdx/lib/init.lit.mdx
+{ lib, pkgs, config, pipeline, checksLib, devshellLib }:
+rec {
+  # Public consumer API: wire src + hooks into a full package set.
+  init = {
+    pkgs,
+    src,
+    system ? "x86_64-linux",
+    postTangle ? [ ],
+    until ? null,
+    sourceDir ? "literate.lit.mdx",
+    forbidTsComments ? true,
+    minProseLines ? 3,
+    maxBlockLength ? 50,
+    enforceDirectoryMatch ? false
+  }:
+    let
+      verified = checksLib.makeVerify {
+        inherit pkgs src sourceDir forbidTsComments minProseLines maxBlockLength enforceDirectoryMatch;
+        inherit postTangle until;
+      };
+      cli = pkgs.writeShellScriptBin "literate-state-machine-wiki" ''
+        set -euo pipefail
+        case "''${1:-}" in
+          build)
+            echo "[literate-state-machine-wiki] Building literate project..."
+            nix build --no-link "''${2:-.}" "''${@:3}"
+            echo "[literate-state-machine-wiki] Build complete."
+            ;;
+          *)
+            echo "literate-state-machine-wiki — opinionated literate build tool"
+            echo ""
+            echo "Usage: literate-state-machine-wiki build [flake-ref]"
+            exit 1
+            ;;
+        esac
+      '';
+    in {
+      packages.${system} = {
+        default = verified.default;
+        literate-verified = verified.default;
+        tangled = verified.tangled;
+        web-wiki = pipeline.buildWebWiki { inherit pkgs src; litSourceDir = sourceDir; };
+        inherit cli;
+      };
+      devShells.${system}.default = devshellLib.mkDevShell {
+        inherit pkgs;
+        extraPackages = [ cli ];
+      };
+    };
+
+  # tangleAndRead: IFD helper. Tangles literate source in the store and
+  # reads one specific file by path. Used by consumers who need tangled
+  # content at eval time (e.g. package.json for importNpmLock or bun2nix).
+  tangleAndRead = { pkgs, src, file }: builtins.readFile "${
+    pkgs.runCommand "tangle-for-eval" {
+      nativeBuildInputs = [ (config.entangledFor pkgs) (config.pythonFor pkgs) ];
+    } ''
+      cp -r ${src}/. build/
+      chmod -R u+w build
+      cd build
+      cat > entangled.toml <<'TOML'
+${config.defaultEntangledToml}
+TOML
+      entangled tangle --force 2>/dev/null
+      ${pipeline.stripEntangledMarkers}
+      mkdir -p $out
+      cp ${file} $out/ 2>/dev/null || (echo "ERROR: ${file} not found after tangle" && exit 1)
+    ''
+  }/${file}";
+
+  # mkChecks: library-internal test suite wiring. Returns an attrset of
+  # derivations to merge into `checks.${system}` in the root flake.
+  # Consumers do not use this — it is called by the root bootstrap stub.
+  mkChecks = { pkgs, tangled, pipeline, checksLib, init, src }:
+    let
+      prefixed = prefix: lib.mapAttrs' (name: value:
+        lib.nameValuePair "${prefix}-${name}" value);
+      integrationTests = import "${tangled}/tests/integration.nix" {
+        inherit pkgs lib;
+        lsmwInit = init;
+      };
+      waterModelTests = import "${tangled}/tests/water-model.nix" {
+        inherit pkgs lib checksLib;
+      };
+    in {
+      tangle-idempotent = checksLib.checkIdempotent { inherit src pkgs; };
+      tangle-immutable = checksLib.checkImmutable {
+        tangled = pipeline.tangle { inherit pkgs src; };
+        inherit pkgs;
+      };
+      unit-tests = import "${tangled}/tests/unit-check.nix" { inherit pkgs lib checksLib; };
+    }
+    // prefixed "integration" integrationTests
+    // prefixed "water-model" waterModelTests;
+}
+```

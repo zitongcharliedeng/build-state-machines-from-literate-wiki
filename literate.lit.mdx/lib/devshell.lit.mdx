@@ -30,7 +30,7 @@ Three layers compose in order:
 
 The caller's `shellHook` appends after all three layers, so consumer-specific messages and setup always run last.
 
-```{.nix file=devshell.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+```{.nix file=lib/devshell.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
 { lib, config }:
 {
   mkDevShell = {
@@ -38,7 +38,7 @@ The caller's `shellHook` appends after all three layers, so consumer-specific me
     basePackages ? [ (config.nodejsFor pkgs) (config.pythonFor pkgs) ],
     extraPackages ? [ ],
     env ? { },
-    sourceGlobs ? [ "literate/*.lit.md" "literate/**/*.lit.md" ],
+    sourceGlobs ? [ "literate.lit.mdx/*.lit.mdx" "literate.lit.mdx/**/*.lit.mdx" ],
     tangleCommand ? null,
     shellHook ? ""
   }:
@@ -54,6 +54,8 @@ The caller's `shellHook` appends after all three layers, so consumer-specific me
     in pkgs.mkShell {
       packages = [ (config.entangledFor pkgs) ] ++ basePackages ++ extraPackages;
       shellHook = ''
+        build() { nix build --no-link --print-out-paths "$@"; }
+        export -f build
         ${envExports}
         echo "[literate-state-machine-wiki] entangled: $(entangled --version 2>/dev/null || echo 'NOT FOUND')"
         ${lib.optionalString (tangleCommand != null) ''

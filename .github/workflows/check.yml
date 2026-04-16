@@ -1,9 +1,11 @@
-# ~~  ~/~ begin <<literate.lit.mdx/.github/workflows/ci.lit.mdx#.github/workflows/check.yml>>[init]
-name: Check and Deploy
-on:
-  push:
-    branches: [main]
-  pull_request:
+name: CI
+
+# Hand-maintained. GitHub Actions reads this from disk, so it can't be
+# IFD-tangled at eval time. The flake handles everything else —
+# `nix flake check` tangles literate source via IFD internally
+# and runs all checks in one command.
+
+on: [push, pull_request, workflow_dispatch]
 
 permissions:
   contents: read
@@ -15,8 +17,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: pip install entangled-cli
-      - run: entangled tangle --force
       - uses: DeterminateSystems/nix-installer-action@main
       - uses: DeterminateSystems/magic-nix-cache-action@main
       - run: nix flake check
@@ -30,14 +30,14 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
-      - run: pip install entangled-cli
-      - run: entangled tangle --force
       - uses: DeterminateSystems/nix-installer-action@main
       - uses: DeterminateSystems/magic-nix-cache-action@main
-      - run: nix build .#web-wiki
+      - name: Build wiki
+        run: nix build --no-link .#web-wiki
+      - name: Copy artifact
+        run: nix build .#web-wiki && cp -rL result dist
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: result
+          path: dist
       - id: deployment
         uses: actions/deploy-pages@v4
-# ~~  ~/~ end
