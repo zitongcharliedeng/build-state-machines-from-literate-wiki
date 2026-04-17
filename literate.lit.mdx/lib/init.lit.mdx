@@ -99,14 +99,14 @@ builtin_allow=(
 user_allow=()
 if [ -f .lsmw-allow ]; then
   while IFS= read -r line; do
-    line="${line%%#*}"
-    line="${line## }"
-    line="${line%% }"
+    line="''${line%%#*}"
+    line="''${line## }"
+    line="''${line%% }"
     [ -z "$line" ] || user_allow+=("$line")
   done < .lsmw-allow
 fi
 
-allow_all=("${builtin_allow[@]}" "${user_allow[@]}" "$source_dir")
+allow_all=("''${builtin_allow[@]}" "''${user_allow[@]}" "$source_dir")
 
 staged="$(git diff --cached --name-only)"
 
@@ -119,7 +119,7 @@ while IFS= read -r path; do
   esac
   # Check built-in and user allow entries (exact match or glob).
   matched=0
-  for allowed in "${allow_all[@]}"; do
+  for allowed in "''${allow_all[@]}"; do
     case "$path" in
       "$allowed"|$allowed) matched=1; break ;;
     esac
@@ -133,7 +133,7 @@ if [ -n "$offenders" ]; then
   printf '%s' "$offenders" >&2
   echo "" >&2
   echo "only these paths may live at the consumer root:" >&2
-  for a in "${builtin_allow[@]}"; do echo "  $a" >&2; done
+  for a in "''${builtin_allow[@]}"; do echo "  $a" >&2; done
   echo "  $source_dir/ (literate wiki tree)" >&2
   echo "" >&2
   echo "if a file is literate source, move it into $source_dir/" >&2
