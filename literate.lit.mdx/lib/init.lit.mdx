@@ -55,10 +55,102 @@ rec {
             nix build --no-link "''${2:-.}" "''${@:3}"
             echo "[literate-state-machine-wiki] Build complete."
             ;;
+          install-hooks)
+            # Install a git pre-commit hook that enforces the consumer-root
+            # allowlist: only a narrow set of paths (flake.nix, flake.lock,
+            # .gitignore, README, LICENSE, the sourceDir, optional extras
+            # from .lsmw-allow) may appear at the repository root. Everything
+            # else is rejected — language manifests, result symlinks, tangled
+            # .py files, pip venvs, node_modules, anything. This inverts the
+            # defaults: instead of blocklisting known bad files one at a time,
+            # the consumer must explicitly declare anything unusual.
+            if [ ! -d .git ]; then
+              echo "[literate-state-machine-wiki] error: not a git repo (no .git/ found)" >&2
+              exit 1
+            fi
+            mkdir -p .git/hooks
+            cat > .git/hooks/pre-commit <<'HOOK'
+#!/usr/bin/env bash
+# Auto-installed by literate-state-machine-wiki install-hooks.
+# Allowlist-based: only known-good paths at consumer root are permitted;
+# anything inside sourceDir is always permitted (it is the literate wiki).
+set -eu
+
+source_dir="''${LSMW_SOURCE_DIR:-literate.lit.mdx}"
+[ -d "$source_dir" ] || source_dir="literate"
+
+# Minimal built-in root allowlist. Consumers can add to this with a
+# `.lsmw-allow` file (one glob per line, comments with '#' ignored).
+builtin_allow=(
+  "flake.nix"
+  "flake.lock"
+  ".gitignore"
+  ".gitattributes"
+  ".envrc"
+  "README"
+  "README.md"
+  "LICENSE"
+  "LICENSE.md"
+  "AGENTS.md"
+  "CLAUDE.md"
+  ".lsmw-allow"
+)
+
+user_allow=()
+if [ -f .lsmw-allow ]; then
+  while IFS= read -r line; do
+    line="${line%%#*}"
+    line="${line## }"
+    line="${line%% }"
+    [ -z "$line" ] || user_allow+=("$line")
+  done < .lsmw-allow
+fi
+
+allow_all=("${builtin_allow[@]}" "${user_allow[@]}" "$source_dir")
+
+staged="$(git diff --cached --name-only)"
+
+offenders=""
+while IFS= read -r path; do
+  [ -z "$path" ] && continue
+  # Anything inside source_dir/ is always allowed (wiki tree).
+  case "$path" in
+    "$source_dir"/*) continue ;;
+  esac
+  # Check built-in and user allow entries (exact match or glob).
+  matched=0
+  for allowed in "${allow_all[@]}"; do
+    case "$path" in
+      "$allowed"|$allowed) matched=1; break ;;
+    esac
+  done
+  [ "$matched" = 1 ] || offenders="$offenders  $path"$'\n'
+done <<< "$staged"
+
+if [ -n "$offenders" ]; then
+  echo "[literate-state-machine-wiki] pre-commit: root-allowlist violation" >&2
+  echo "" >&2
+  printf '%s' "$offenders" >&2
+  echo "" >&2
+  echo "only these paths may live at the consumer root:" >&2
+  for a in "${builtin_allow[@]}"; do echo "  $a" >&2; done
+  echo "  $source_dir/ (literate wiki tree)" >&2
+  echo "" >&2
+  echo "if a file is literate source, move it into $source_dir/" >&2
+  echo "if a file is a derived artifact, do not commit it (it lives in the nix store)" >&2
+  echo "if a file is legitimately root-level, add its glob to .lsmw-allow" >&2
+  exit 1
+fi
+HOOK
+            chmod +x .git/hooks/pre-commit
+            echo "[literate-state-machine-wiki] installed .git/hooks/pre-commit (root-allowlist mode)"
+            ;;
           *)
             echo "literate-state-machine-wiki — opinionated literate build tool"
             echo ""
-            echo "Usage: literate-state-machine-wiki build [flake-ref]"
+            echo "Usage:"
+            echo "  literate-state-machine-wiki build [flake-ref]"
+            echo "  literate-state-machine-wiki install-hooks"
             exit 1
             ;;
         esac

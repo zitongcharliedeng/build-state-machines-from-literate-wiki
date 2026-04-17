@@ -54,10 +54,24 @@ The caller's `shellHook` appends after all three layers, so consumer-specific me
     in pkgs.mkShell {
       packages = [ (config.entangledFor pkgs) ] ++ basePackages ++ extraPackages;
       shellHook = ''
-        build() { nix build --no-link --print-out-paths "$@"; }
+        build() { command nix build --no-link --print-out-paths "$@"; }
         export -f build
+
+        # Soft nudge: warn when 'nix build' is used without --no-link, since
+        # ./result symlinks defeat the store-only invariant lsmw promises.
+        # A ban is too brittle; real prevention belongs at commit time via
+        # a pre-commit hook that rejects tracked tangled artifacts (see
+        # upstream issue #10). This is a friendly whitelist, not a wall.
+        nix() {
+          if [ "$1" = "build" ] && [[ " $* " != *" --no-link "* ]]; then
+            echo "[literate-state-machine-wiki] hint: 'build' (wraps --no-link) avoids creating ./result. Proceeding anyway." >&2
+          fi
+          command nix "$@"
+        }
+        export -f nix
         ${envExports}
         echo "[literate-state-machine-wiki] entangled: $(entangled --version 2>/dev/null || echo 'NOT FOUND')"
+        echo "[literate-state-machine-wiki] tangle & build: use 'build' (wraps --no-link --print-out-paths)."
         ${lib.optionalString (tangleCommand != null) ''
           if ${autoTangleCondition}; then
             echo "[literate-state-machine-wiki] Auto-tangling literate source..."
