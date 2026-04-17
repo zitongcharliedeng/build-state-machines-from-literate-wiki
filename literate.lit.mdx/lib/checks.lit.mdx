@@ -20,7 +20,7 @@ rec {
 
 ## Pre-tangle checks
 
-Two checks run before Entangled writes output: `literate-structure` rejects code blocks that start with `//`/`/*`/`*/` (explanations belong in prose) and enforces minimum prose density; `input-title-tooltips` rejects `<input title=>` in favor of accessible info-button dialogs.
+Three checks run before Entangled writes output: `literate-structure` rejects code blocks that start with `//`/`/*`/`*/` (explanations belong in prose) and enforces minimum prose density; `input-title-tooltips` rejects `<input title=>` in favor of accessible info-button dialogs; `no-root-gitignore` rejects a project-root `.gitignore` because artifacts belong in the nix store, not in a tree-local ignore list — a `.gitignore` signals the literate discipline has been broken upstream. Consumers that need one (rare) can pass `allowRootGitignore = true`.
 
 ```{.nix file=lib/checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
   mkDefaultPreTangleChecks = {
@@ -29,7 +29,8 @@ Two checks run before Entangled writes output: `literate-structure` rejects code
     tooltipCheckFile ? "literate/index.lit.md",
     minProseLines ? 3,
     maxBlockLength ? 50,
-    enforceDirectoryMatch ? false
+    enforceDirectoryMatch ? false,
+    allowRootGitignore ? false
   }:
     lib.flatten [
       [{
@@ -158,6 +159,31 @@ LITCHECK
           if grep -q '<input[^>]*title="' ${lib.escapeShellArg tooltipCheckFile} 2>/dev/null; then
             echo "[literate-state-machine-wiki] ERROR: <input> elements with title= tooltips found."
             grep -n '<input[^>]*title="' ${lib.escapeShellArg tooltipCheckFile} | head -10
+            exit 1
+          fi
+        '';
+      })
+      (lib.optional (!allowRootGitignore) {
+        name = "no-root-gitignore";
+        command = ''
+          offenders=""
+          [ -f .gitignore ] && offenders="$offenders .gitignore"
+          [ -f ${lib.escapeShellArg sourceDir}/.gitignore ] && offenders="$offenders ${sourceDir}/.gitignore"
+          if [ -n "$offenders" ]; then
+            echo "[literate-state-machine-wiki] ERROR: .gitignore found in project tree:$offenders"
+            echo ""
+            echo "  lsmw-consumer projects should not carry a .gitignore."
+            echo "  Artifacts belong in the nix store, not in an ignore list — a tracked"
+            echo "  .gitignore means the literate discipline has been broken upstream"
+            echo "  (node_modules/dist/result/etc. have leaked into the worktree)."
+            echo ""
+            echo "  Fixes:"
+            echo "    - build with 'nix build --no-link' so 'result' never lands"
+            echo "    - keep node_modules in the nix store (via bun2nix + initWeb)"
+            echo "    - for truly local-only excludes, use .git/info/exclude (uncommitted)"
+            echo ""
+            echo "  If you are sure you need one, pass 'allowRootGitignore = true' to"
+            echo "  lsmw.lib.init."
             exit 1
           fi
         '';
@@ -362,12 +388,13 @@ Each check in `preTangleChecks` / `postTangleChecks` gets its own named derivati
     minProseLines ? 3,
     maxBlockLength ? 50,
     enforceDirectoryMatch ? false,
+    allowRootGitignore ? false,
     stripGeneratedMarkers ? true,
     preTangleChecks ? [ ],
     postTangleChecks ? [ ]
   }:
     let
-      allPreChecks = (mkDefaultPreTangleChecks { inherit sourceDir forbidTsComments tooltipCheckFile minProseLines maxBlockLength enforceDirectoryMatch; }) ++ preTangleChecks;
+      allPreChecks = (mkDefaultPreTangleChecks { inherit sourceDir forbidTsComments tooltipCheckFile minProseLines maxBlockLength enforceDirectoryMatch allowRootGitignore; }) ++ preTangleChecks;
       allPostChecks = mkDefaultPostTangleChecks ++ postTangleChecks;
       tangled = pipeline.tangle { inherit src pkgs stripGeneratedMarkers; };
     in {
@@ -467,13 +494,14 @@ Five stages, four gates:
     minProseLines ? 3,
     maxBlockLength ? 50,
     enforceDirectoryMatch ? false,
+    allowRootGitignore ? false,
     stripGeneratedMarkers ? true,
     postTangle ? [],
     until ? null
   }:
     let
       allPreChecks = mkDefaultPreTangleChecks {
-        inherit sourceDir forbidTsComments tooltipCheckFile minProseLines maxBlockLength enforceDirectoryMatch;
+        inherit sourceDir forbidTsComments tooltipCheckFile minProseLines maxBlockLength enforceDirectoryMatch allowRootGitignore;
       };
 
       # Stage 1: Pre-check — validates literate structure
