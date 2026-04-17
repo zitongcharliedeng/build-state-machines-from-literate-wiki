@@ -40,11 +40,12 @@ rec {
     forbidTsComments ? true,
     minProseLines ? 3,
     maxBlockLength ? 50,
-    enforceDirectoryMatch ? false
+    enforceDirectoryMatch ? false,
+    allowRootGitignore ? false
   }:
     let
       verified = checksLib.makeVerify {
-        inherit pkgs src sourceDir forbidTsComments minProseLines maxBlockLength enforceDirectoryMatch;
+        inherit pkgs src sourceDir forbidTsComments minProseLines maxBlockLength enforceDirectoryMatch allowRootGitignore;
         inherit postTangle until;
       };
       cli = pkgs.writeShellScriptBin "literate-state-machine-wiki" ''
