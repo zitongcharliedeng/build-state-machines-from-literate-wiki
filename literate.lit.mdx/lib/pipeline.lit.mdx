@@ -150,6 +150,8 @@ Isolation is load-bearing: the derivation input is the **single file** read via 
         name = "litsrc-${sanitizedRelPath}";
       };
       watchEntry = "${sourceDir}/${relPath}";
+      dirRelPath = builtins.dirOf relPath;
+      mirrorPrefix = if dirRelPath == "." then "" else "${dirRelPath}/";
     in
     pkgs.runCommand safeName {
       nativeBuildInputs = [ (config.entangledFor pkgs) (config.pythonFor pkgs) ];
@@ -160,6 +162,28 @@ Isolation is load-bearing: the derivation input is the **single file** read via 
       cp ${onePath} build/${watchEntry}
       chmod -R u+w build
       cd build
+
+      ${lib.optionalString (mirrorPrefix != "") ''
+        python3 - << 'PYEOF'
+        import re, sys
+        path = "${watchEntry}"
+        prefix = "${mirrorPrefix}"
+        with open(path) as f:
+            text = f.read()
+        warnings = []
+        def fix(m):
+            head, val, tail = m.group(1), m.group(2), m.group(3)
+            if "/" in val:
+                warnings.append(val)
+                return m.group(0)
+            return f"{head}{prefix}{val}{tail}"
+        text = re.sub(r'(^```\{[^}]*file=)([^ }]+)([ }])', fix, text, flags=re.MULTILINE)
+        with open(path, "w") as f:
+            f.write(text)
+        for w in warnings:
+            sys.stderr.write(f"warn: file={w} has slashes; LSMW auto-mirrors source dir from bare basenames — drop the prefix\n")
+        PYEOF
+      ''}
 
       cat > entangled.toml << 'TOML'
       version = "2.0"
