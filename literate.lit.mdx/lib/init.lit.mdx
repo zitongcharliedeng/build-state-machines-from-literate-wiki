@@ -37,14 +37,11 @@ rec {
     postTangle ? [ ],
     until ? null,
     sourceDir ? "literate.lit.mdx",
-    forbidTsComments ? true,
-    minProseLines ? 3,
-    maxBlockLength ? 50,
     enforceDirectoryMatch ? false
   }:
     let
       verified = checksLib.makeVerify {
-        inherit pkgs src sourceDir forbidTsComments minProseLines maxBlockLength enforceDirectoryMatch;
+        inherit pkgs src sourceDir enforceDirectoryMatch;
         inherit postTangle until;
       };
       cli = pkgs.writeShellScriptBin "literate-state-machine-wiki" ''

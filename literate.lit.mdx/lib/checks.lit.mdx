@@ -25,10 +25,7 @@ Two checks run before Entangled writes output: `literate-structure` rejects code
 ```{.nix file=lib/checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
   mkDefaultPreTangleChecks = {
     sourceDir ? "literate",
-    forbidTsComments ? true,
     tooltipCheckFile ? "literate/index.lit.md",
-    minProseLines ? 3,
-    maxBlockLength ? 50,
     enforceDirectoryMatch ? false
   }:
     lib.flatten [
@@ -39,9 +36,9 @@ Two checks run before Entangled writes output: `literate-structure` rejects code
 import os, re, sys
 
 source_dir = ${builtins.toJSON sourceDir}
-min_prose = ${toString minProseLines}
-max_block = ${toString maxBlockLength}
-forbid_comments = ${if forbidTsComments then "True" else "False"}
+min_prose = 3
+max_block = 50
+forbid_comments = True
 enforce_dirs = ${if enforceDirectoryMatch then "True" else "False"}
 errors = 0
 violations = 0
@@ -357,17 +354,14 @@ Each check in `preTangleChecks` / `postTangleChecks` gets its own named derivati
   makeChecks = {
     src, pkgs,
     sourceDir ? "literate.lit.mdx",
-    forbidTsComments ? true,
     tooltipCheckFile ? null,
-    minProseLines ? 3,
-    maxBlockLength ? 50,
     enforceDirectoryMatch ? false,
     stripGeneratedMarkers ? true,
     preTangleChecks ? [ ],
     postTangleChecks ? [ ]
   }:
     let
-      allPreChecks = (mkDefaultPreTangleChecks { inherit sourceDir forbidTsComments tooltipCheckFile minProseLines maxBlockLength enforceDirectoryMatch; }) ++ preTangleChecks;
+      allPreChecks = (mkDefaultPreTangleChecks { inherit sourceDir tooltipCheckFile enforceDirectoryMatch; }) ++ preTangleChecks;
       allPostChecks = mkDefaultPostTangleChecks ++ postTangleChecks;
       tangled = pipeline.tangle { inherit src pkgs stripGeneratedMarkers; };
     in {
@@ -462,10 +456,7 @@ Five stages, four gates:
   makeVerify = {
     src, pkgs,
     sourceDir ? "literate.lit.mdx",
-    forbidTsComments ? true,
     tooltipCheckFile ? null,
-    minProseLines ? 3,
-    maxBlockLength ? 50,
     enforceDirectoryMatch ? false,
     stripGeneratedMarkers ? true,
     postTangle ? [],
@@ -473,7 +464,7 @@ Five stages, four gates:
   }:
     let
       allPreChecks = mkDefaultPreTangleChecks {
-        inherit sourceDir forbidTsComments tooltipCheckFile minProseLines maxBlockLength enforceDirectoryMatch;
+        inherit sourceDir tooltipCheckFile enforceDirectoryMatch;
       };
 
       # Stage 1: Pre-check — validates literate structure
