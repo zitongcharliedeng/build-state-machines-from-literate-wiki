@@ -88,7 +88,6 @@ TOML
         inherit pkgs;
         src = ./.;
         sourceDir = "literate.lit.mdx";
-        maxBlockLength = 200;
       }) // {
         lib = {
           inherit init tangleAndRead;
