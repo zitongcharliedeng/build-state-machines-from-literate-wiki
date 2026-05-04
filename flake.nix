@@ -16,7 +16,7 @@
 
   inputs = {
     nixpkgs.url = "nixpkgs";
-    entangled.url = "github:zitongcharliedeng/entangled";
+    entangled.url = "github:zitongcharliedeng/entangled/dev";
   };
 
   # IFD is load-bearing: the tangled derivation must be built at eval time
