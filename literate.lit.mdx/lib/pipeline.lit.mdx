@@ -234,6 +234,16 @@ Isolation is load-bearing: the derivation input is the **single file** read via 
       name = "JSON"
       identifiers = ["json"]
       comment = { open = "// ~~ " }
+
+      [[languages]]
+      name = "Markdown"
+      identifiers = ["md", "markdown"]
+      comment = { open = "<!-- ~~ ", close = " -->" }
+
+      [[languages]]
+      name = "TOML"
+      identifiers = ["toml"]
+      comment = { open = "# ~~ " }
       TOML
 
       rm -f .entangled/filedb.json
