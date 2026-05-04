@@ -190,60 +190,7 @@ Isolation is load-bearing: the derivation input is the **single file** read via 
       watch_list = ["${watchEntry}"]
       annotation = "standard"
 
-      [[languages]]
-      name = "TypeScript"
-      identifiers = ["ts", "typescript"]
-      comment = { open = "// ~~ " }
-
-      [[languages]]
-      name = "Nix"
-      identifiers = ["nix"]
-      comment = { open = "# ~~ " }
-
-      [[languages]]
-      name = "CSS"
-      identifiers = ["css"]
-      comment = { open = "/* ~~ ", close = " */" }
-
-      [[languages]]
-      name = "HTML"
-      identifiers = ["html"]
-      comment = { open = "<!-- ~~ ", close = " -->" }
-
-      [[languages]]
-      name = "Rust"
-      identifiers = ["rust", "rs"]
-      comment = { open = "// ~~ " }
-
-      [[languages]]
-      name = "Python"
-      identifiers = ["python", "py"]
-      comment = { open = "# ~~ " }
-
-      [[languages]]
-      name = "Bash"
-      identifiers = ["bash", "sh"]
-      comment = { open = "# ~~ " }
-
-      [[languages]]
-      name = "YAML"
-      identifiers = ["yaml", "yml"]
-      comment = { open = "# ~~ " }
-
-      [[languages]]
-      name = "JSON"
-      identifiers = ["json"]
-      comment = { open = "// ~~ " }
-
-      [[languages]]
-      name = "Markdown"
-      identifiers = ["md", "markdown"]
-      comment = { open = "<!-- ~~ ", close = " -->" }
-
-      [[languages]]
-      name = "TOML"
-      identifiers = ["toml"]
-      comment = { open = "# ~~ " }
+      ${config.defaultEntangledLanguages}
       TOML
 
       rm -f .entangled/filedb.json
