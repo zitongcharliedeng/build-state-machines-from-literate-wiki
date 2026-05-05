@@ -234,7 +234,7 @@ Produces a deployable directory from literate sources, resolving `[[wiki links]]
   buildWebWiki = {
     src,
     pkgs,
-    name ? "literate-state-machine-wiki-docs",
+    name ? "${config.name}-docs",
     litSourceDir ? "literate.lit.md"
   }:
     pkgs.runCommand name {
