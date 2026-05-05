@@ -14,9 +14,7 @@ It wraps Entangled the way `cargo` wraps `rustc`. Entangled does the tangling. T
 
 ## Default extension: `.lit.md`
 
-The default extension for literate sources is **`.lit.md`** — plain markdown with fenced-code-block attributes (entangled syntax). Obsidian and mdbase index `.md` natively, so the lsmw verbs (`lsmw mv`/`rm`/`todo`) work out of the box on the same vault and wikilinks resolve without configuration.
-
-`.lit.mdx` is also accepted everywhere — `enumerateLiterateFiles`, the watch lists, the find patterns, and the rename verbs all match both extensions. Use `.lit.mdx` per-file when that file needs JSX components, MDX `import`/`export`, or `{expression}` interpolation in prose. The MDX renderer (in `pipeline.buildWebWiki`) treats either extension the same; the JSX-aware path activates based on file content, not on the extension. Projects that need JSX everywhere can still pass `sourceDir = "..."` pointing at a directory of `.lit.mdx` files; lsmw doesn't care.
+Plain markdown with fenced-code-block attributes (entangled syntax). Obsidian and mdbase index `.md` natively so the lsmw verbs (`mv`/`rm`/`todo`/`create`/`write`) work on the same vault and wikilinks resolve without configuration. `.lit.mdx` is also accepted — use it per-file for JSX/MDX content; the pipeline accepts both interchangeably.
 
 ## What it does
 
