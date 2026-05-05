@@ -1,28 +1,9 @@
----
-title: Nix Checks Module
-description: All validation logic for literate-state-machine-wiki — pre-tangle checks, post-tangle checks, structural integrity checks, and the makeChecks public API
-tags: [nix, checks, validation, module]
----
-
-# Nix Checks Module
-
-This module owns all validation logic for literate-state-machine-wiki projects, taking `{ lib, config, pipeline }` and exporting every function that answers "is this literate source well-formed?".
-
-## Module signature
-
-The module uses `rec` so helpers can reference each other by name without argument threading.
-
-```{.nix file=lib/checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+# ~/~ begin <<literate.lit.md/lib/checks.lit.md#lib/checks.nix>>[init]
 # ~~ This file is generated from literate.lit.md/nix/checks.lit.mdx
 { lib, config, pipeline }:
 rec {
-```
-
-## Pre-tangle checks
-
-Two checks run before Entangled writes output: `literate-structure` rejects code blocks that start with `//`/`/*`/`*/` (explanations belong in prose) and enforces minimum prose density; `input-title-tooltips` rejects `<input title=>` in favor of accessible info-button dialogs.
-
-```{.nix file=lib/checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+# ~/~ end
+# ~/~ begin <<literate.lit.md/lib/checks.lit.md#lib/checks.nix>>[1]
   mkDefaultPreTangleChecks = {
     sourceDir ? "literate",
     tooltipCheckFile ? "literate/index.lit.md",
@@ -160,21 +141,11 @@ LITCHECK
         '';
       })
     ];
-```
-
-## Post-tangle checks
-
-No default post-tangle checks. Block-length is already checked pre-tangle with configurable `maxBlockLength`.
-
-```{.nix file=lib/checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+# ~/~ end
+# ~/~ begin <<literate.lit.md/lib/checks.lit.md#lib/checks.nix>>[2]
   mkDefaultPostTangleChecks = [ ];
-```
-
-## Check execution helpers
-
-`collectNativeBuildInputs` flattens per-check dependency lists; `renderChecks` builds the bash script that runs them, wrapping warn-mode checks in `set +e` so they report without aborting.
-
-```{.nix file=lib/checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+# ~/~ end
+# ~/~ begin <<literate.lit.md/lib/checks.lit.md#lib/checks.nix>>[3]
   collectNativeBuildInputs = checks:
     builtins.concatLists (map (check: check.nativeBuildInputs or [ ]) checks);
 
@@ -194,13 +165,8 @@ No default post-tangle checks. Block-length is already checked pre-tangle with c
         fi
       '' else body))
       checks);
-```
-
-## Water model check execution
-
-`renderChecksWaterModel` runs ALL checks in a stage, collects all violations, and shows everything at once. Only fails at the end if any error-mode check failed. This is the O(n) water model — contrast with `renderChecks` which aborts at the first error.
-
-```{.nix file=lib/checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+# ~/~ end
+# ~/~ begin <<literate.lit.md/lib/checks.lit.md#lib/checks.nix>>[4]
   renderChecksWaterModel = phase: checks: let tag = "[${config.name}:${phase}]"; var = "_${config.name}"; in ''
     ${var}_errors=0
     ${var}_passed=""
@@ -238,13 +204,8 @@ No default post-tangle checks. Block-length is already checked pre-tangle with c
       exit 1
     fi
   '';
-```
-
-## mkProjectCheck — single-check derivation builder
-
-`mkProjectCheck` wraps a single check in a nix derivation, making each custom check independently addressable and cacheable as `nix build .#checks.x86_64-linux.post-my-check`.
-
-```{.nix file=lib/checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+# ~/~ end
+# ~/~ begin <<literate.lit.md/lib/checks.lit.md#lib/checks.nix>>[5]
   mkProjectCheck = {
     pkgs, src, name, command,
     nativeBuildInputs ? [ ],
@@ -260,13 +221,8 @@ No default post-tangle checks. Block-length is already checked pre-tangle with c
       ${command}
       touch "$out"
     '';
-```
-
-## Structural integrity checks
-
-`checkIdempotent` runs tangle twice and diffs the results (any difference is a hard failure); `checkImmutable` asserts every output file has permissions `444`.
-
-```{.nix file=lib/checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+# ~/~ end
+# ~/~ begin <<literate.lit.md/lib/checks.lit.md#lib/checks.nix>>[6]
   checkIdempotent = {
     src, name ? "idempotent-check", pkgs,
  stripGeneratedMarkers ? true
@@ -293,13 +249,8 @@ No default post-tangle checks. Block-length is already checked pre-tangle with c
       echo "OK: All tangled files are immutable (444)"
       touch "$out"
     '';
-```
-
-## makeNamedChecks — per-check derivations for custom checks
-
-Each check in `preTangleChecks` / `postTangleChecks` gets its own named derivation prefixed `pre-` or `post-`, with warn-mode checks exiting 0 so the derivation succeeds and caches.
-
-```{.nix file=lib/checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+# ~/~ end
+# ~/~ begin <<literate.lit.md/lib/checks.lit.md#lib/checks.nix>>[7]
   makeNamedChecks = {
     phase, checks, pkgs, src, stripGeneratedMarkers
   }:
@@ -331,13 +282,8 @@ Each check in `preTangleChecks` / `postTangleChecks` gets its own named derivati
           };
         })
       checks);
-```
-
-## makeChecks — self-testing API (consumers use makeVerify)
-
-`makeChecks` is used by the library's own flake for self-testing via `nix flake check`. Consumers call `makeVerify` instead — see below. Produces four standard derivations (`tangle-and-check`, `tangle-succeeds`, `tangle-idempotent`, `tangle-immutable`) plus one named derivation per entry in `preTangleChecks` / `postTangleChecks`.
-
-```{.nix file=lib/checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+# ~/~ end
+# ~/~ begin <<literate.lit.md/lib/checks.lit.md#lib/checks.nix>>[8]
   makeChecks = {
     src, pkgs,
     sourceDir ? "literate.lit.md",
@@ -375,19 +321,8 @@ Each check in `preTangleChecks` / `postTangleChecks` gets its own named derivati
       phase = "post"; checks = postTangleChecks;
       inherit pkgs src stripGeneratedMarkers;
     };
-```
-
-## Hook DAG helpers — validateNeeds, resolveClosure, filterUntil
-
-These pure functions operate on the `postTangle` hook list. They are extracted to top level so they can be unit-tested directly (see `tests/unit.lit.mdx`). `makeVerify` calls them internally.
-
-**`validateNeeds`** — walks the hook list in declaration order, asserting every hook's `needs` list references hooks that appear **earlier**. This enforces topological order at eval time, so consumers get a clear error at `nix eval` rather than a cryptic failure during build. A hook that references a non-existent name, or a hook that appears after its dependents, throws with the offending hook name and the missing names.
-
-**`resolveClosure`** — given a target hook name and a `hooksByName` attrset, returns the transitive closure of `needs` as a list, including the target itself. Uses a `visited` accumulator to terminate on cycles (a cycle would short-circuit when it re-encounters a visited node). Order within the closure is not preserved — callers should filter the original ordered list to recover ordering.
-
-**`filterUntil`** — the public entry point used by `until = "hookname"`. When `until == null`, returns the full hook list unchanged. When set, asserts the target hook exists (clear error if not), resolves its transitive closure, and filters the original list to that closure while preserving declaration order.
-
-```{.nix file=lib/checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+# ~/~ end
+# ~/~ begin <<literate.lit.md/lib/checks.lit.md#lib/checks.nix>>[9]
   # Walk hook list in order; every hook's needs must reference earlier hooks.
   # Throws on forward reference or missing hook. Returns true on success.
   validateNeeds = hooks:
@@ -423,23 +358,8 @@ These pure functions operate on the `postTangle` hook list. They are extracted t
       else true;
       needed = assert _untilExists; resolveClosure { inherit hooksByName; name = until; };
     in builtins.filter (h: builtins.elem h.name needed) postTangle;
-```
-
-## makeVerify — the consumer product
-
-`makeVerify` returns **packages**, not checks. The consumer calls `lib.init`, gets `packages.default`, runs `nix build`. Done.
-
-Each stage is a separate nix derivation depending on the previous. Nix's dependency graph IS the escalating pipeline — if pre-checks fail, tangle never runs. If tangle fails, linters never run. Within each stage, checks use the water model: all run, all violations collected.
-
-Five stages, four gates:
-
-1. `preChecked` — validates literate structure (annotations, prose, invisible blocks)
-2. `tangledTree` — entangled extracts code, produces full source + generated tree
-3. `linted` — consumer linters run on the tree (water model)
-4. `tested` — consumer tests run on the tree (water model)
-5. `default` — extracts tangled targets with chmod 444 into nix store
-
-```{.nix file=lib/checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+# ~/~ end
+# ~/~ begin <<literate.lit.md/lib/checks.lit.md#lib/checks.nix>>[10]
   makeVerify = {
     src, pkgs,
     sourceDir ? "literate.lit.md",
@@ -503,4 +423,4 @@ TOML
       tangled = pipeline.tanglePerFile { inherit src pkgs sourceDir stripGeneratedMarkers; };
     };
 }
-```
+# ~/~ end
