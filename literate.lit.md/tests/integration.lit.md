@@ -182,7 +182,6 @@ in {
     touch "$out"
   '';
 
-  # Hooks: a → b → c (chain), plus d → e (unrelated branch). until = "c"
   # must run {a, b, c} and skip {d, e}. This proves transitive resolution
   # actually walks the full chain, not just direct deps.
   until-transitive = pkgs.runCommand "until-transitive" { } ''

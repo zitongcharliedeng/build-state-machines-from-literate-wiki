@@ -27,7 +27,6 @@ Reusable test data. `linearChain` is `deps → tsc → test → build`, a straig
 { lib, checksLib }:
 
 let
-  # Linear: deps → tsc → test → build
   linearChain = [
     { name = "deps"; command = "install"; }
     { name = "tsc"; command = "check"; needs = [ "deps" ]; }
@@ -35,7 +34,6 @@ let
     { name = "build"; command = "vite build"; needs = [ "test" ]; }
   ];
 
-  # Diamond: deps → {tsc, lint} → build
   diamond = [
     { name = "deps"; command = "install"; }
     { name = "tsc"; command = "check"; needs = [ "deps" ]; }
@@ -43,7 +41,6 @@ let
     { name = "build"; command = "vite build"; needs = [ "tsc" "lint" ]; }
   ];
 
-  # Disjoint: two unrelated chains
   disjoint = [
     { name = "a1"; command = "a1"; }
     { name = "a2"; command = "a2"; needs = [ "a1" ]; }
@@ -51,11 +48,9 @@ let
     { name = "b2"; command = "b2"; needs = [ "b1" ]; }
   ];
 
-  # Helper: does `fn` throw? (catches via tryEval)
   throws = fn:
     let result = builtins.tryEval (fn {}); in !result.success;
 
-  # Helper: convert list to attrset for hooksByName (mirrors makeVerify internals)
   byName = hooks: builtins.listToAttrs (map (h: { name = h.name; value = h; }) hooks);
 
 in

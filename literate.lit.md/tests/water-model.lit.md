@@ -131,7 +131,6 @@ in {
     ];
     expectExit = 1;
     assertions = ''
-      # Hooks a and c run (no needs on failed hook) but pipeline still aborts
       if [ ! -f a-marker ]; then
         echo "FAIL: a hook did not run"
         exit 1
