@@ -144,16 +144,13 @@ rec {
       };
 ```
 
-## The mv, rm, and todo verbs — thin wrappers, encapsulated, locked
+## The verbs — thin wrappers, encapsulated, locked
 
-`lsmw mv`, `lsmw rm`, and `lsmw todo` are the consumer API. Two upstream tools sit behind them:
+`lsmw mv`/`rm`/`todo`/`create`/`write` are the consumer API. `mv`/`rm` wrap [notesmd-cli](https://github.com/Yakitrak/notesmd-cli) (Yakitrak's headless Go binary; falls back to its pre-rename `obsidian-cli` filename). `todo` falls through to `mtn` (mdbase-tasknotes, headless) or `tn` (tasknotes-cli, HTTP-API, requires Obsidian); `mtn` is preferred so the headless path is the default.
 
-1. **mv / rm** — backed by [notesmd-cli](https://github.com/Yakitrak/notesmd-cli) (Yakitrak's headless Go binary; renamed from "obsidian-cli" because Obsidian Inc shipped an OFFICIAL desktop-required `obsidian-cli`). Either upstream name resolves: the wrapper prefers `notesmd` (post-rename), falls back to `obsidian-cli` (pre-rename installs).
-2. **todo** — backed by `mtn` (mdbase-tasknotes, headless — operates on markdown via mdbase, NLP via bundled tasknotes-nlp-core, **no Obsidian required**); falls back to `tn` (tasknotes-cli, HTTP-API — requires Obsidian running with the plugin's API enabled). The wrapper prefers `mtn` so the headless path is the default; `tn` is only used when Obsidian is already open and you want live sync.
+**`lsmw todo inline <file> '<title>'`** appends `- [[<title>]]` to `<file>` AND writes the target's path-form wikilink (`[[folder/note]]`) into the task file's `referenced_in:` frontmatter (deduped, under flock). Auto-creates `TaskNotes/<slug>.md` if no task with that title exists. Path-form is required: collision-safe at read time, rename-safe (notesmd's rename rewrites both `[[name]]` and `[[folder/name]]`).
 
-**Inline tasknotes are bidirectional.** `lsmw todo inline <file> '<title>'` appends `- [[<title>]]` to `<file>` AND writes the target's path-form wikilink (`[[folder/note]]`) into the task file's `referenced_in:` frontmatter (deduped, under flock). Path-form is required: it's both collision-safe at read time and rename-safe (notesmd's rename rewrites both `[[name]]` and `[[folder/name]]` patterns; plain path strings are dead text).
-
-Consumers don't see which binary handled the call. Every verb invocation acquires an exclusive `flock` on `${vault}/.lsmw.lock` and **blocks** until released — concurrent `lsmw mv`/`lsmw rm`/`lsmw todo` calls on the same vault serialise, never race.
+Every verb invocation acquires an exclusive `flock` on `${vault}/.lsmw.lock` and blocks until released — concurrent calls on the same vault serialise, never race.
 
 ```{.nix file=lib/init.nix as-a-real-non-nix-store-file="init module imported by the bootstrap"}
       mkVerb = name: spec: pkgs.writeShellApplication ({ inherit name; } // spec);
