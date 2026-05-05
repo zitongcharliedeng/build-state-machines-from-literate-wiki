@@ -182,19 +182,13 @@ Consumers don't see which binary handled the call. Every verb invocation acquire
               task_file=$( { rg -lF --no-ignore --hidden "title: \"$title\"" "$vault" --glob '*.md' 2>/dev/null || true; } | head -n1)
               rel=$(realpath --relative-to="$vault" "$file"); stem=''${rel%.lit.md}; stem=''${stem%.lit.mdx}; stem=''${stem%.md}; stem=''${stem%.mdx}
               ( flock 200
-                printf '\n- [[%s]]\n' "$title" >> "$file"
-                yq -i --front-matter=process ".referenced_in = ((.referenced_in // []) + [\"[[$stem]]\"] | unique)" "$task_file"
-              ) 200>"$vault/.lsmw.lock" ;;
-            append)
-              shift; file="$1"; text="$2"; slug=$(slugify "$text")
-              task_file="$vault/TaskNotes/$slug.md"
-              ( flock 200
-                if [ ! -e "$task_file" ]; then
+                if [ -z "$task_file" ]; then
+                  slug=$(slugify "$title")
+                  task_file="$vault/TaskNotes/$slug.md"
                   mkdir -p "$(dirname "$task_file")"
-                  printf -- '---\ntitle: "%s"\nstatus: open\ncreated: %s\n---\n\n# %s\n' "$text" "$(date -I)" "$text" > "$task_file"
+                  printf -- '---\ntitle: "%s"\nstatus: open\ncreated: %s\n---\n\n# %s\n' "$title" "$(date -I)" "$title" > "$task_file"
                 fi
-                rel=$(realpath --relative-to="$vault" "$file"); stem=''${rel%.lit.md}; stem=''${stem%.lit.mdx}; stem=''${stem%.md}; stem=''${stem%.mdx}
-                printf '\n- [[%s]]\n' "$text" >> "$file"
+                printf '\n- [[%s]]\n' "$title" >> "$file"
                 yq -i --front-matter=process ".referenced_in = ((.referenced_in // []) + [\"[[$stem]]\"] | unique)" "$task_file"
               ) 200>"$vault/.lsmw.lock" ;;
             *)
@@ -259,8 +253,7 @@ Consumers don't see which binary handled the call. Every verb invocation acquire
             echo "todo examples:"
             echo "  literate-state-machine-wiki todo create '<text>'             (forwarded to mtn — creates standalone task file)"
             echo "  literate-state-machine-wiki todo list --json                 (forwarded to mtn)"
-            echo "  literate-state-machine-wiki todo inline <file> '<title>'    (appends '- [[<title>]]' to <file>; task file must exist)"
-            echo "  literate-state-machine-wiki todo append <file> '<text>'     (creates TaskNotes/<slug>.md AND appends '- [[<text>]]' to <file>)"
+            echo "  literate-state-machine-wiki todo inline <file> '<title>'    (appends '- [[<title>]]' to <file>; auto-creates TaskNotes/<slug>.md if title not found)"
             exit 1
             ;;
         esac
