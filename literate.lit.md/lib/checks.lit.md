@@ -209,45 +209,40 @@ No default post-tangle checks. Block-length is already checked pre-tangle with c
 `renderChecksWaterModel` runs ALL checks in a stage, collects all violations, and shows everything at once. Only fails at the end if any error-mode check failed. This is the O(n) water model — contrast with `renderChecks` which aborts at the first error.
 
 ```{.nix file=lib/checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
-  renderChecksWaterModel = phase: checks: ''
-    _lsmw_errors=0
-    _lsmw_passed=""
+  renderChecksWaterModel = phase: checks: let tag = "[${config.name}:${phase}]"; var = "_${config.name}"; in ''
+    ${var}_errors=0
+    ${var}_passed=""
     ${builtins.concatStringsSep "\n" (map
       (check:
         let
           needs = check.needs or [];
           needsCheck = if needs == [] then "true" else
-            builtins.concatStringsSep " && " (map (n: ''echo "$_lsmw_passed" | grep -qw "${n}"'') needs);
+            builtins.concatStringsSep " && " (map (n: ''echo "''$${var}_passed" | grep -qw "${n}"'') needs);
         in ''
-        # Hook: ${check.name} ${if needs != [] then "needs: ${builtins.concatStringsSep ", " needs}" else ""}
         if ${needsCheck}; then
-          echo "[literate-state-machine-wiki:${phase}] ${check.description or check.name}"
+          echo "${tag} ${check.description or check.name}"
           set +e
-          (
-            set -euo pipefail
-            cd ${lib.escapeShellArg (check.cwd or ".")}
-            ${check.command}
-          )
-          _lsmw_status=$?
+          ( set -euo pipefail; cd ${lib.escapeShellArg (check.cwd or ".")}; ${check.command} )
+          ${var}_status=$?
           set -e
-          if [ "$_lsmw_status" -ne 0 ]; then
+          if [ "''$${var}_status" -ne 0 ]; then
             ${if (check.mode or "error") == "warn" then ''
-              echo "[literate-state-machine-wiki:${phase}] WARNING: ${check.name} failed"
-              _lsmw_passed="$_lsmw_passed ${check.name}"
+              echo "${tag} WARNING: ${check.name} failed"
+              ${var}_passed="''$${var}_passed ${check.name}"
             '' else ''
-              echo "[literate-state-machine-wiki:${phase}] ERROR: ${check.name} failed"
-              _lsmw_errors=$((_lsmw_errors + 1))
+              echo "${tag} ERROR: ${check.name} failed"
+              ${var}_errors=$((${var}_errors + 1))
             ''}
           else
-            _lsmw_passed="$_lsmw_passed ${check.name}"
+            ${var}_passed="''$${var}_passed ${check.name}"
           fi
         else
-          echo "[literate-state-machine-wiki:${phase}] SKIPPED: ${check.name} (needs not met: ${builtins.concatStringsSep ", " needs})"
+          echo "${tag} SKIPPED: ${check.name} (needs not met: ${builtins.concatStringsSep ", " needs})"
         fi
       '')
       checks)}
-    if [ "$_lsmw_errors" -gt 0 ]; then
-      echo "[literate-state-machine-wiki:${phase}] $_lsmw_errors error(s)"
+    if [ "''$${var}_errors" -gt 0 ]; then
+      echo "${tag} ''$${var}_errors error(s)"
       exit 1
     fi
   '';

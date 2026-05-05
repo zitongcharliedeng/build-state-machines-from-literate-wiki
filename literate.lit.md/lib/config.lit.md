@@ -84,6 +84,7 @@ let
 in
 {
   inherit defaultEntangledLanguages;
+  name = "lsmw";
 
   defaultEntangledToml = ''
     version = "2.0"
