@@ -26,7 +26,9 @@ Two checks run before Entangled writes output: `literate-structure` rejects code
   mkDefaultPreTangleChecks = {
     sourceDir ? "literate",
     tooltipCheckFile ? "literate/index.lit.md",
-    enforceDirectoryMatch ? false
+    enforceDirectoryMatch ? false,
+    minProseLines ? 3,
+    maxBlockLength ? 50
   }:
     lib.flatten [
       [{
@@ -36,8 +38,8 @@ Two checks run before Entangled writes output: `literate-structure` rejects code
 import os, re, sys
 
 source_dir = ${builtins.toJSON sourceDir}
-min_prose = 3
-max_block = 50
+min_prose = ${toString minProseLines}
+max_block = ${toString maxBlockLength}
 forbid_comments = True
 enforce_dirs = ${if enforceDirectoryMatch then "True" else "False"}
 errors = 0
