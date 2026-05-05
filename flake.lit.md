@@ -170,7 +170,7 @@ Consumers don't see which binary handled the call. Every verb invocation acquire
       rmVerb = lsmwVerb "lsmw-rm" "delete";
       todoVerb = pkgs.writeShellApplication {
         name = "lsmw-todo";
-        runtimeInputs = [ pkgs.util-linux pkgs.yq-go pkgs.ripgrep ];
+        runtimeInputs = [ pkgs.util-linux pkgs.yq-go pkgs.ripgrep pkgs.coreutils ];
         text = ''
           vault=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           case "''${1:-}" in
