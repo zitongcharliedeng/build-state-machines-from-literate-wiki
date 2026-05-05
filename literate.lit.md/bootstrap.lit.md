@@ -108,7 +108,6 @@ TOML
         rm -rf .entangled
       '';
 
-      # Import the tangled library modules.
       config = import "${tangled}/lib/config.nix" { inherit lib; entangledInput = entangled; };
       pipeline = import "${tangled}/lib/pipeline.nix" { inherit lib config; };
       checksLib = import "${tangled}/lib/checks.nix" { inherit lib config pipeline; };
@@ -118,7 +117,6 @@ TOML
       };
       init = initModule.init;
     in
-      # Self-apply: the library uses itself to build itself.
       (init {
         inherit pkgs;
         src = ./.;
