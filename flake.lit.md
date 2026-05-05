@@ -154,7 +154,7 @@ rec {
 Every verb invocation acquires an exclusive `flock` on `${vault}/.lsmw.lock` and blocks until released — concurrent calls on the same vault serialise, never race.
 
 ```{.nix file=lib/init.nix as-a-real-non-nix-store-file="init module imported by the bootstrap"}
-      name = "lsmw";
+      inherit (config) name;
       lockFile = ".${name}.lock";
       mkVerb = verb: spec: pkgs.writeShellApplication ({ name = "${name}-${verb}"; } // spec);
       notesmdVerb = verb: upstream: mkVerb verb {
