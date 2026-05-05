@@ -138,11 +138,14 @@ rec {
       };
 ```
 
-## The mv and rm verbs — thin wrappers, encapsulated, locked
+## The mv, rm, and todo verbs — thin wrappers, encapsulated, locked
 
-`lsmw mv` and `lsmw rm` are the consumer API. The implementation under the hood is [notesmd-cli](https://github.com/Yakitrak/notesmd-cli) (Yakitrak's headless Go binary; renamed from "obsidian-cli" because Obsidian Inc shipped an OFFICIAL desktop-required `obsidian-cli`). Either upstream name resolves: the wrapper prefers `notesmd` (post-rename), falls back to `obsidian-cli` (pre-rename installs). Consumers don't see which.
+`lsmw mv`, `lsmw rm`, and `lsmw todo` are the consumer API. Two upstream tools sit behind them:
 
-Every verb invocation acquires an exclusive `flock` on `${vault}/.lsmw.lock` and **blocks** until released — concurrent `lsmw mv` calls on the same vault serialise, never race. `lsmw rm` follows the same lock discipline.
+1. **mv / rm** — backed by [notesmd-cli](https://github.com/Yakitrak/notesmd-cli) (Yakitrak's headless Go binary; renamed from "obsidian-cli" because Obsidian Inc shipped an OFFICIAL desktop-required `obsidian-cli`). Either upstream name resolves: the wrapper prefers `notesmd` (post-rename), falls back to `obsidian-cli` (pre-rename installs).
+2. **todo** — backed by `mtn` (mdbase-tasknotes, headless — operates on markdown via mdbase, NLP via bundled tasknotes-nlp-core, **no Obsidian required**); falls back to `tn` (tasknotes-cli, HTTP-API — requires Obsidian running with the plugin's API enabled). The wrapper prefers `mtn` so the headless path is the default; `tn` is only used when Obsidian is already open and you want live sync. **Inline tasknotes** — bullets pointing to a TaskNote via `[[wikilink]]` (e.g. `- [[Do this daily]]`) — have no upstream CLI primitive (mtn only writes standalone task files), so `lsmw todo inline <file> '<title>'` owns that compose step directly: it appends `- [[<title>]]` to the target file under the same flock. Standalone task creation and inline-reference creation thus stay separate concerns; consumers compose them when they want both.
+
+Consumers don't see which binary handled the call. Every verb invocation acquires an exclusive `flock` on `${vault}/.lsmw.lock` and **blocks** until released — concurrent `lsmw mv`/`lsmw rm`/`lsmw todo` calls on the same vault serialise, never race.
 
 ```{.nix file=lib/init.nix as-a-real-non-nix-store-file="init module imported by the bootstrap"}
       lsmwVerb = name: upstream: pkgs.writeShellApplication {
@@ -159,6 +162,36 @@ Every verb invocation acquires an exclusive `flock` on `${vault}/.lsmw.lock` and
       };
       mvVerb = lsmwVerb "lsmw-mv" "move";
       rmVerb = lsmwVerb "lsmw-rm" "delete";
+      todoVerb = pkgs.writeShellApplication {
+        name = "lsmw-todo";
+        runtimeInputs = [ pkgs.util-linux ];
+        text = ''
+          vault=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          case "''${1:-}" in
+            inline)
+              # Inline tasknote = a bullet point referencing a TaskNote via [[wikilink]].
+              # mtn has no inline command (it only creates standalone task files), so this
+              # is a compose-step the wrapper owns directly: append "- [[<title>]]" to a
+              # target file. The task file itself must exist (use `lsmw todo create` first).
+              shift
+              file="''${1:-}"; shift || true
+              title="$*"
+              if [ -z "$file" ] || [ -z "$title" ]; then
+                echo "usage: lsmw todo inline <file> <title>" >&2
+                exit 1
+              fi
+              flock "$vault/.lsmw.lock" sh -c "printf '\\n- [[%s]]\\n' \"\$1\" >> \"\$2\"" -- "$title" "$file"
+              ;;
+            *)
+              bin=$(command -v mtn || command -v tn) || {
+                echo "lsmw-todo requires mtn (npm install -g mdbase-tasknotes) on PATH (preferred, headless), or tn (npm install -g tasknotes-cli) for live Obsidian-API mode" >&2
+                exit 1
+              }
+              exec flock "$vault/.lsmw.lock" "$bin" "$@"
+              ;;
+          esac
+        '';
+      };
 ```
 
 ## The CLI dispatcher
@@ -182,6 +215,10 @@ Every verb invocation acquires an exclusive `flock` on `${vault}/.lsmw.lock` and
             shift
             exec ${rmVerb}/bin/lsmw-rm "$@"
             ;;
+          todo)
+            shift
+            exec ${todoVerb}/bin/lsmw-todo "$@"
+            ;;
           *)
             echo "literate-state-machine-wiki — opinionated literate build tool"
             echo ""
@@ -190,11 +227,12 @@ Every verb invocation acquires an exclusive `flock` on `${vault}/.lsmw.lock` and
             echo "  literate-state-machine-wiki mv <src> <dst>"
             echo "  literate-state-machine-wiki rename <src> <dst>"
             echo "  literate-state-machine-wiki rm <path>"
+            echo "  literate-state-machine-wiki todo <args...>     (forwards to mtn; falls back to tn)"
             echo ""
-            echo "TaskNotes ops use the upstream CLIs directly:"
-            echo "  mtn create '<text>'                 (standalone TaskNote, no Obsidian needed)"
-            echo "  mtn list --json                     (enumerate standalones)"
-            echo "  obsidian tasknotes:capture vault=X text='...'  (live, NLP-parsed)"
+            echo "todo examples:"
+            echo "  literate-state-machine-wiki todo create '<text>'         (forwarded to mtn — creates standalone task file)"
+            echo "  literate-state-machine-wiki todo list --json             (forwarded to mtn)"
+            echo "  literate-state-machine-wiki todo inline <file> '<title>' (appends '- [[<title>]]' to <file>; task file must exist)"
             exit 1
             ;;
         esac
@@ -205,7 +243,7 @@ Every verb invocation acquires an exclusive `flock` on `${vault}/.lsmw.lock` and
         literate-verified = verified.default;
         tangled = verified.tangled;
         web-wiki = pipeline.buildWebWiki { inherit pkgs src; litSourceDir = sourceDir; };
-        inherit cli mvVerb rmVerb;
+        inherit cli mvVerb rmVerb todoVerb;
       };
       devShells.${system}.default = devshellLib.mkDevShell {
         inherit pkgs;
