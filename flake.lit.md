@@ -103,7 +103,7 @@ After the IFD-tangle, every `.nix` under `lib/` is in the store. The bootstrap i
             init { inherit pkgs src sourceDir; ignoreLiterateGitSubmodules = true; };
         };
 
-        templates.default = { path = ./templates/minimal; description = "lsmw minimal consumer"; };
+        templates.default = { path = ./templates/minimal; description = "${config.name} minimal consumer"; };
 
         checks.${system} = initModule.mkChecks {
           inherit pkgs tangled pipeline checksLib init;
@@ -235,23 +235,23 @@ Every verb invocation acquires an exclusive `flock` on `${vault}/.lsmw.lock` and
           build) nix build --no-link "''${2:-.}" "''${@:3}" ;;
           mv|rename)
             shift
-            exec ${mvVerb}/bin/lsmw-mv "$@"
+            exec ${mvVerb}/bin/${name}-mv "$@"
             ;;
           rm)
             shift
-            exec ${rmVerb}/bin/lsmw-rm "$@"
+            exec ${rmVerb}/bin/${name}-rm "$@"
             ;;
           todo)
             shift
-            exec ${todoVerb}/bin/lsmw-todo "$@"
+            exec ${todoVerb}/bin/${name}-todo "$@"
             ;;
           create)
             shift
-            exec ${createVerb}/bin/lsmw-create "$@"
+            exec ${createVerb}/bin/${name}-create "$@"
             ;;
           write)
             shift
-            exec ${writeVerb}/bin/lsmw-write "$@"
+            exec ${writeVerb}/bin/${name}-write "$@"
             ;;
           *) exit 1 ;;
         esac
