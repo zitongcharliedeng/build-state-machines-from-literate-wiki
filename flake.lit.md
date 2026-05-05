@@ -208,6 +208,28 @@ Consumers don't see which binary handled the call. Every verb invocation acquire
           printf -- '---\ntitle: "%s"\n---\n\n# %s\n\n' "$stem" "$stem" > "$path"
         '';
       };
+      writeVerb = pkgs.writeShellApplication {
+        name = "lsmw-write";
+        runtimeInputs = [ pkgs.coreutils pkgs.ripgrep ];
+        text = ''
+          file="$1"
+          [ -e "$file" ] || { echo "lsmw write: file not found: $file" >&2; exit 1; }
+          echo ">>> editing $file — use [[wikilinks]] for cross-refs; lsmw will validate them on save."
+          ''${EDITOR:-nano} "$file"
+          vault=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          unresolved=0
+          while read -r link; do
+            [ -z "$link" ] && continue
+            base=''${link##*/}
+            if ! { rg -lF --no-ignore --hidden "$base" "$vault" --glob '*.md' 2>/dev/null || true; } | grep -q .; then
+              echo "warn: [[$link]] does not resolve — create it with: lsmw create $link.lit.md" >&2
+              unresolved=$((unresolved+1))
+            fi
+          done < <(rg -oN '\[\[([^]|#]+)' --replace '$1' "$file" 2>/dev/null || true)
+          [ "$unresolved" -gt 0 ] && echo "saved with $unresolved unresolved wikilink(s)" >&2
+          exit 0
+        '';
+      };
 ```
 
 ## The CLI dispatcher
@@ -239,6 +261,10 @@ Consumers don't see which binary handled the call. Every verb invocation acquire
             shift
             exec ${createVerb}/bin/lsmw-create "$@"
             ;;
+          write)
+            shift
+            exec ${writeVerb}/bin/lsmw-write "$@"
+            ;;
           *)
             echo "literate-state-machine-wiki — opinionated literate build tool"
             echo ""
@@ -248,6 +274,7 @@ Consumers don't see which binary handled the call. Every verb invocation acquire
             echo "  literate-state-machine-wiki rename <src> <dst>"
             echo "  literate-state-machine-wiki rm <path>"
             echo "  literate-state-machine-wiki create <path>"
+            echo "  literate-state-machine-wiki write <file>      (open \$EDITOR; validates [[wikilinks]] on save)"
             echo "  literate-state-machine-wiki todo <args...>     (forwards to mtn; falls back to tn)"
             echo ""
             echo "todo examples:"
@@ -264,7 +291,7 @@ Consumers don't see which binary handled the call. Every verb invocation acquire
         literate-verified = verified.default;
         tangled = verified.tangled;
         web-wiki = pipeline.buildWebWiki { inherit pkgs src; litSourceDir = sourceDir; };
-        inherit cli mvVerb rmVerb todoVerb createVerb;
+        inherit cli mvVerb rmVerb todoVerb createVerb writeVerb;
       };
       devShells.${system}.default = devshellLib.mkDevShell {
         inherit pkgs;
