@@ -71,10 +71,7 @@ Here is the complete root `flake.nix`. It is hand-maintained. Changes to this fi
       pkgs = nixpkgs.legacyPackages.${system};
       lib = nixpkgs.lib;
 
-      # at eval time and we read the result with builtins.readFile /
-      # builtins.path. This is our "configure + make" — produces the full
-      # nix library from the literate sources.
-      tangled = pkgs.runCommand "lsmw-bootstrap-tangle" {
+      tangled = pkgs.runCommand "bootstrap-tangle" {
         nativeBuildInputs = [ entangled.packages.${system}.default ];
       } ''
         mkdir -p $out
