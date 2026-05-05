@@ -66,7 +66,6 @@ let
       touch "$out"
     '';
 in {
-  # ── Transition 1: success path ──────────────────────────────────────
   # A single passing hook exits 0 and writes its marker.
   success-single = mkWaterModelTest {
     name = "success-single";
@@ -82,7 +81,6 @@ in {
     '';
   };
 
-  # ── Transition 2: warn-mode failure propagates to dependents ─────────
   # A warn-mode hook that fails is recorded as "passed" so its dependent runs.
   warn-propagates = mkWaterModelTest {
     name = "warn-propagates";
@@ -99,7 +97,6 @@ in {
     '';
   };
 
-  # ── Transition 3: error-mode failure causes dependents to SKIP ───────
   # An error-mode hook failure does NOT add its name to _lsmw_passed, so
   # any dependent hook with `needs = [ "failed" ]` is skipped. The pipeline
   # aborts at the end (exit 1), but the dependent's marker is NEVER written.
@@ -123,7 +120,6 @@ in {
     '';
   };
 
-  # ── Transition 4: pipeline aborts with exit 1 on any error-mode failure ─
   # Even if later hooks (without needs) would pass, the _lsmw_errors counter
   # causes the pipeline to exit 1 at the end.
   error-mode-aborts-pipeline = mkWaterModelTest {
@@ -147,7 +143,6 @@ in {
     '';
   };
 
-  # ── Multi-level skip: failed error hook cascades through transitive needs ─
   # A → B → C where A is error-mode-fails. Both B and C should skip.
   multi-level-skip = mkWaterModelTest {
     name = "multi-level-skip";
@@ -173,7 +168,6 @@ in {
     '';
   };
 
-  # ── Empty hook list is a no-op that exits 0 ─────────────────────────
   empty-hooks = mkWaterModelTest {
     name = "empty-hooks";
     hooks = [];
