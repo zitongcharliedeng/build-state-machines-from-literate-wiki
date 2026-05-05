@@ -161,7 +161,7 @@ Every verb invocation acquires an exclusive `flock` on `${vault}/.lsmw.lock` and
         runtimeInputs = [ pkgs.util-linux ];
         text = ''
           bin=$(command -v notesmd || command -v obsidian-cli) || exit 1
-          vault=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          vault=$(git rev-parse --show-toplevel 2>/dev/null) || { echo "${name}: not in a git repo (vault detection failed)" >&2; exit 1; }
           exec flock "$vault/${lockFile}" "$bin" ${upstream} "$@"
         '';
       };
@@ -170,7 +170,7 @@ Every verb invocation acquires an exclusive `flock` on `${vault}/.lsmw.lock` and
       todoVerb = mkVerb "todo" {
         runtimeInputs = [ pkgs.util-linux pkgs.yq-go pkgs.ripgrep pkgs.coreutils ];
         text = ''
-          vault=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          vault=$(git rev-parse --show-toplevel 2>/dev/null) || { echo "${name}: not in a git repo (vault detection failed)" >&2; exit 1; }
           slugify() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed 's/^-//;s/-$//'; }
           case "''${1:-}" in
             inline)
@@ -210,7 +210,7 @@ Every verb invocation acquires an exclusive `flock` on `${vault}/.lsmw.lock` and
           file="$1"
           [ -e "$file" ] || exit 1
           ''${EDITOR:-nano} "$file"
-          vault=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          vault=$(git rev-parse --show-toplevel 2>/dev/null) || { echo "${name}: not in a git repo (vault detection failed)" >&2; exit 1; }
           unresolved=0
           while read -r link; do
             [ -z "$link" ] && continue
