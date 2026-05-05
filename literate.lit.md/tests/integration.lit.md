@@ -55,13 +55,14 @@ let
 
   # Run lsmwInit on a fixture and return the default package (post-tangled tree).
   # Wraps in tryEval so we can assert failure modes.
-  mkFixture = { name, litContent, postTangle ? [], until ? null, minProseLines ? 3, maxBlockLength ? 50 }:
+  mkFixture = { name, litContent, postTangle ? [], until ? null }:
     let
       tree = mkFixtureTree { inherit name litContent; };
       outputs = lsmwInit {
-        inherit pkgs postTangle until minProseLines maxBlockLength;
+        inherit pkgs postTangle until;
         src = tree;
         sourceDir = "literate.lit.md";
+        ignoreLiterateGitSubmodules = true;
       };
     in outputs.packages.${pkgs.stdenv.hostPlatform.system}.default;
 

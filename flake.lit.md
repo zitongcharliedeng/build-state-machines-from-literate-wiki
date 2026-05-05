@@ -155,14 +155,14 @@ Every verb invocation acquires an exclusive `flock` on `${vault}/.lsmw.lock` and
 
 ```{.nix file=lib/init.nix as-a-real-non-nix-store-file="init module imported by the bootstrap"}
       name = "lsmw";
-      lockPath = vault: "$${vault}/.${name}.lock";
+      lockFile = ".${name}.lock";
       mkVerb = verb: spec: pkgs.writeShellApplication ({ name = "${name}-${verb}"; } // spec);
       notesmdVerb = verb: upstream: mkVerb verb {
         runtimeInputs = [ pkgs.util-linux ];
         text = ''
           bin=$(command -v notesmd || command -v obsidian-cli) || exit 1
           vault=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          exec flock "${lockPath "vault"}" "$bin" ${upstream} "$@"
+          exec flock "$vault/${lockFile}" "$bin" ${upstream} "$@"
         '';
       };
       mvVerb = notesmdVerb "mv" "move";
@@ -186,10 +186,10 @@ Every verb invocation acquires an exclusive `flock` on `${vault}/.lsmw.lock` and
                 fi
                 printf '\n- [[%s]]\n' "$title" >> "$file"
                 yq -i --front-matter=process ".referenced_in = ((.referenced_in // []) + [\"[[$stem]]\"] | unique)" "$task_file"
-              ) 200>"${lockPath "vault"}" ;;
+              ) 200>"$vault/${lockFile}" ;;
             *)
               bin=$(command -v mtn || command -v tn)
-              exec flock "${lockPath "vault"}" "$bin" "$@" ;;
+              exec flock "$vault/${lockFile}" "$bin" "$@" ;;
           esac
         '';
       };
