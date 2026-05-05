@@ -71,7 +71,6 @@ Here is the complete root `flake.nix`. It is hand-maintained. Changes to this fi
       pkgs = nixpkgs.legacyPackages.${system};
       lib = nixpkgs.lib;
 
-      # Stage 0: IFD tangle literate source. Nix builds this derivation
       # at eval time and we read the result with builtins.readFile /
       # builtins.path. This is our "configure + make" — produces the full
       # nix library from the literate sources.

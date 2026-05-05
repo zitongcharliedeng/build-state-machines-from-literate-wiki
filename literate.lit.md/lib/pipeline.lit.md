@@ -23,7 +23,6 @@ rec {
     chmod -R u+w build
     cd build
 
-    # Library provides entangled.toml — consumer doesn't need one
     cat > entangled.toml << 'TOML'
     ${config.defaultEntangledToml}
     TOML
@@ -216,7 +215,6 @@ Isolation is load-bearing: the derivation input is the **single file** read via 
         inherit src sourceDir relPath pkgs stripGeneratedMarkers;
       }) files;
       merged = pkgs.runCommand name {
-        # Force rebuild when any per-file drv changes, but cp is cheap.
         perFilePaths = perFileDrvs;
       } ''
         mkdir -p $out

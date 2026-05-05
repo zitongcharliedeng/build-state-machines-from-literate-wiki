@@ -390,7 +390,6 @@ These pure functions operate on the `postTangle` hook list. They are extracted t
 **`filterUntil`** — the public entry point used by `until = "hookname"`. When `until == null`, returns the full hook list unchanged. When set, asserts the target hook exists (clear error if not), resolves its transitive closure, and filters the original list to that closure while preserving declaration order.
 
 ```{.nix file=lib/checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
-  # Walk hook list in order; every hook's needs must reference earlier hooks.
   # Throws on forward reference or missing hook. Returns true on success.
   validateNeeds = hooks:
     let
@@ -404,7 +403,6 @@ These pure functions operate on the `postTangle` hook list. They are extracted t
         else go (seen ++ [h.name]) rest;
     in go [] hooks;
 
-  # Transitive closure of needs for a hook, as a list (order not preserved).
   # hooksByName: attrset {hookname = hook;}. Uses visited accumulator to handle cycles.
   resolveClosure = { hooksByName, name, visited ? [] }:
     if builtins.elem name visited then visited
@@ -414,7 +412,6 @@ These pure functions operate on the `postTangle` hook list. They are extracted t
       withSelf = visited ++ [name];
     in builtins.foldl' (acc: n: resolveClosure { inherit hooksByName; name = n; visited = acc; }) withSelf needs;
 
-  # Filter postTangle list by until target. Returns full list if until is null.
   # Preserves declaration order within the closure.
   filterUntil = { postTangle, until }:
     if until == null then postTangle else
@@ -456,7 +453,6 @@ Five stages, four gates:
         inherit sourceDir tooltipCheckFile enforceDirectoryMatch;
       };
 
-      # Stage 1: Pre-check — validates literate structure
       preChecked = pkgs.runCommand "literate-pre-checked" {
         nativeBuildInputs = [ (config.pythonFor pkgs) ];
       } ''
@@ -468,7 +464,6 @@ Five stages, four gates:
         ${renderChecksWaterModel "pre" allPreChecks}
       '';
 
-      # Stage 2: Tangle — entangled extracts code (depends on preChecked)
       tangledTree = pkgs.runCommand "literate-tangled-tree" {
         nativeBuildInputs = [ (config.entangledFor pkgs) (config.pythonFor pkgs) ];
       } ''
@@ -487,7 +482,6 @@ TOML
       _needsValid = validateNeeds postTangle;
       effectivePostTangle = filterUntil { inherit postTangle until; };
 
-      # Stage 3: Post-tangle hooks — consumer's commands, water model (depends on tangledTree)
       # Output: the full tree WITH any hook artifacts (e.g. dist/ from vite build)
       postTangled = assert _needsValid; if effectivePostTangle == [] then tangledTree else
         pkgs.runCommand "literate-post-tangled" {
