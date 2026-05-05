@@ -44,7 +44,6 @@ let
     ```
   '';
 
-  # Build a fixture source tree as a derivation containing literate.lit.md/hello.lit.md
   mkFixtureTree = { name, litContent }:
     pkgs.runCommand "fixture-${name}-tree" { } ''
       mkdir -p $out/literate.lit.md

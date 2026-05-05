@@ -29,7 +29,6 @@ A consumer adds literate-state-machine-wiki as a flake input, calls `lib.init`, 
         src = ./.;
         sourceDir = "literate.lit.md";
 
-        # Stage 3: linters (fast, deterministic)
         linters = [
           {
             name = "typecheck";
@@ -43,7 +42,6 @@ A consumer adds literate-state-machine-wiki as a flake input, calls `lib.init`, 
           }
         ];
 
-        # Stage 4: tests (slow, needs browser)
         tests = [
           {
             name = "playwright";
