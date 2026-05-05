@@ -13,7 +13,7 @@ This module owns all validation logic for literate-state-machine-wiki projects, 
 The module uses `rec` so helpers can reference each other by name without argument threading.
 
 ```{.nix file=lib/checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
-# ~~ This file is generated from literate.lit.md/nix/checks.lit.mdx
+# ~~ Generated from literate.lit.md/lib/checks.lit.md
 { lib, config, pipeline }:
 rec {
 ```
@@ -142,7 +142,7 @@ for root, _, files in os.walk(source_dir):
             if not (name.endswith(".lit.mdx") or name.endswith(".lit.md")):
                 path = os.path.join(root, name)
                 print(f"  error core/non-literate-file: {path}")
-                print(f"    File must end in .lit.mdx to be processed. Rename it.")
+                print(f"    File must end in .lit.md or .lit.mdx to be processed. Rename it.")
                 errors += 1
 
 if errors > 0:
@@ -381,7 +381,7 @@ Each check in `preTangleChecks` / `postTangleChecks` gets its own named derivati
 
 ## Hook DAG helpers — validateNeeds, resolveClosure, filterUntil
 
-These pure functions operate on the `postTangle` hook list. They are extracted to top level so they can be unit-tested directly (see `tests/unit.lit.mdx`). `makeVerify` calls them internally.
+These pure functions operate on the `postTangle` hook list. They are extracted to top level so they can be unit-tested directly (see `tests/unit.lit.md`). `makeVerify` calls them internally.
 
 **`validateNeeds`** — walks the hook list in declaration order, asserting every hook's `needs` list references hooks that appear **earlier**. This enforces topological order at eval time, so consumers get a clear error at `nix eval` rather than a cryptic failure during build. A hook that references a non-existent name, or a hook that appears after its dependents, throws with the offending hook name and the missing names.
 

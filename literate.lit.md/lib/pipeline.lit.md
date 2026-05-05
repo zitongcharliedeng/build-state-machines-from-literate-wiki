@@ -10,7 +10,7 @@ This module copies sources into a build sandbox, runs Entangled, strips generate
 
 ## Module signature
 ```{.nix file=lib/pipeline.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
-# ~~ This file is generated from literate.lit.md/nix/pipeline.lit.mdx
+# ~~ Generated from literate.lit.md/lib/pipeline.lit.md
 { lib, config }:
 rec {
 ```
