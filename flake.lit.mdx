@@ -138,25 +138,27 @@ rec {
       };
 ```
 
-## The mv and rm verbs — thin wrappers around obsidian-cli
+## The mv and rm verbs — thin wrappers, encapsulated, locked
 
-`obsidian-cli` (Yakitrak's [notesmd-cli](https://github.com/Yakitrak/notesmd-cli), headless, no Obsidian process required) is the UNIX library that already does wikilink-aware rename and delete "one thing well." `lsmw mv` and `lsmw rm` exec it verbatim. No bespoke link-rewrite, no `find`-with-prune walker, no sed regex over four wikilink shapes — that work belongs in obsidian-cli where it's tested by its own community. obsidian-cli is a Go binary not yet in nixpkgs; consumers install it on PATH (`go install github.com/Yakitrak/notesmd-cli@latest`) and the wrappers exec it. If it's missing, the wrappers fail with a clear hint.
+`lsmw mv` and `lsmw rm` are the consumer API. The implementation under the hood is [notesmd-cli](https://github.com/Yakitrak/notesmd-cli) (Yakitrak's headless Go binary; renamed from "obsidian-cli" because Obsidian Inc shipped an OFFICIAL desktop-required `obsidian-cli`). Either upstream name resolves: the wrapper prefers `notesmd` (post-rename), falls back to `obsidian-cli` (pre-rename installs). Consumers don't see which.
+
+Every verb invocation acquires an exclusive `flock` on `${vault}/.lsmw.lock` and **blocks** until released — concurrent `lsmw mv` calls on the same vault serialise, never race. `lsmw rm` follows the same lock discipline.
 
 ```{.nix file=lib/init.nix as-a-real-non-nix-store-file="init module imported by the bootstrap"}
-      mvVerb = pkgs.writeShellApplication {
-        name = "lsmw-mv";
+      lsmwVerb = name: upstream: pkgs.writeShellApplication {
+        inherit name;
+        runtimeInputs = [ pkgs.util-linux ];
         text = ''
-          command -v obsidian-cli >/dev/null || { echo "lsmw mv requires obsidian-cli on PATH (go install github.com/Yakitrak/notesmd-cli@latest)" >&2; exit 1; }
-          exec obsidian-cli move "$@"
+          bin=$(command -v notesmd || command -v obsidian-cli) || {
+            echo "${name} requires notesmd-cli on PATH (go install github.com/Yakitrak/notesmd-cli@latest)" >&2
+            exit 1
+          }
+          vault=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          exec flock "$vault/.lsmw.lock" "$bin" ${upstream} "$@"
         '';
       };
-      rmVerb = pkgs.writeShellApplication {
-        name = "lsmw-rm";
-        text = ''
-          command -v obsidian-cli >/dev/null || { echo "lsmw rm requires obsidian-cli on PATH (go install github.com/Yakitrak/notesmd-cli@latest)" >&2; exit 1; }
-          exec obsidian-cli delete "$@"
-        '';
-      };
+      mvVerb = lsmwVerb "lsmw-mv" "move";
+      rmVerb = lsmwVerb "lsmw-rm" "delete";
 ```
 
 ## The CLI dispatcher
