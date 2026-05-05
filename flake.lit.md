@@ -99,7 +99,11 @@ After the IFD-tangle, every `.nix` under `lib/` is in the store. The bootstrap i
         lib = {
           inherit init tangleAndRead;
           inherit (config) defaultEntangledToml;
+          minimalFlake = { src, sourceDir ? "literate.lit.md", pkgs ? nixpkgs.legacyPackages.${system} }:
+            init { inherit pkgs src sourceDir; ignoreLiterateGitSubmodules = true; };
         };
+
+        templates.default = { path = ./templates/minimal; description = "lsmw minimal consumer"; };
 
         checks.${system} = initModule.mkChecks {
           inherit pkgs tangled pipeline checksLib init;
@@ -147,9 +151,7 @@ rec {
 1. **mv / rm** — backed by [notesmd-cli](https://github.com/Yakitrak/notesmd-cli) (Yakitrak's headless Go binary; renamed from "obsidian-cli" because Obsidian Inc shipped an OFFICIAL desktop-required `obsidian-cli`). Either upstream name resolves: the wrapper prefers `notesmd` (post-rename), falls back to `obsidian-cli` (pre-rename installs).
 2. **todo** — backed by `mtn` (mdbase-tasknotes, headless — operates on markdown via mdbase, NLP via bundled tasknotes-nlp-core, **no Obsidian required**); falls back to `tn` (tasknotes-cli, HTTP-API — requires Obsidian running with the plugin's API enabled). The wrapper prefers `mtn` so the headless path is the default; `tn` is only used when Obsidian is already open and you want live sync.
 
-**Inline tasknotes are bidirectional primitives.** A bullet `- [[Do this daily]]` in any vault file points to the standalone TaskNote `Do this daily.md` — but absent extra metadata, an agent reading the task file cannot tell where it was inlined without scanning the whole vault (O(N) per task). That's a real gap in upstream TaskNotes. `lsmw todo inline <file> '<title>'` closes it by maintaining the link from BOTH sides under one flock: it appends `- [[<title>]]` to `<file>` AND appends `<file>` (in wikilink form `[[<basename>]]`) to the task file's `referenced_in:` frontmatter list (deduplicated). An agent reading the task file thereafter sees its inline-reference sites in O(1) without grepping. Origin tracking is a primitive of the lsmw API, not a search.
-
-The wikilink form is critical: notesmd-cli's `move` does global string replacement of both basename-form `[[name]]` AND path-form `[[folder/name]]` across all file content (frontmatter included — see `pkg/obsidian/utils.go` `GenerateLinkReplacements`), and Obsidian's "Update internal links" treats wikilinks inside YAML text/list properties as live links. The wrapper stores the **path-form wikilink** (`[[folder/note]]`, vault-relative path without extension) rather than basename-form (`[[note]]`) for two reasons: basename-form is ambiguous when two vault files share a basename (Obsidian resolves to "closest" non-deterministically), and path-form is what disambiguates. Both forms get rewritten on rename, but only path-form is collision-safe at read time. Plain path strings like `"noteA.md"` would NOT survive rename: notesmd's rename only recognises wikilink and markdown-link patterns, never raw path strings in YAML.
+**Inline tasknotes are bidirectional.** `lsmw todo inline <file> '<title>'` appends `- [[<title>]]` to `<file>` AND writes the target's path-form wikilink (`[[folder/note]]`) into the task file's `referenced_in:` frontmatter (deduped, under flock). Path-form is required: it's both collision-safe at read time and rename-safe (notesmd's rename rewrites both `[[name]]` and `[[folder/name]]` patterns; plain path strings are dead text).
 
 Consumers don't see which binary handled the call. Every verb invocation acquires an exclusive `flock` on `${vault}/.lsmw.lock` and **blocks** until released — concurrent `lsmw mv`/`lsmw rm`/`lsmw todo` calls on the same vault serialise, never race.
 
