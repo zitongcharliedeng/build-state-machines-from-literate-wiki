@@ -37,7 +37,7 @@ The bootstrap copies `literate.lit.md/` into the store, writes a minimal `entang
       pkgs = nixpkgs.legacyPackages.${system};
       lib = nixpkgs.lib;
 
-      tangled = pkgs.runCommand "lsmw-bootstrap-tangle" {
+      tangled = pkgs.runCommand "bootstrap-tangle" {
         nativeBuildInputs = [ entangled.packages.${system}.default ];
       } ''
         mkdir -p $out
