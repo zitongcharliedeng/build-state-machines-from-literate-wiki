@@ -138,172 +138,23 @@ rec {
       };
 ```
 
-## The mv verb — wikilink-aware filesystem rename
+## The mv and rm verbs — thin wrappers around obsidian-cli
 
-LSMW projects are knowledge graphs encoded as Obsidian-flavored Markdown trees: every `.lit.mdx` page can reference any other via `[[wikilink]]` syntax. A plain `mv` breaks every inbound link silently, because the link target is the path-or-basename of the moved file. The `lsmw mv` verb closes that gap: it relocates the file (with `git mv` if tracked, plain `mv` otherwise), then walks the tree once and rewrites every wikilink that targeted the old location to point at the new one. Aliases (`[[old|alias]]`), anchors (`[[old#section]]`), and the combined form (`[[old#section|alias]]`) all preserved.
-
-We package the verb as a separate `pkgs.writeShellApplication` rather than inlining it into the dispatcher. `writeShellApplication` runs `shellcheck` at build time and lets us declare `runtimeInputs` explicitly, so `git`, `findutils`, and `gnused` are pinned to the package's closure instead of inherited from the consumer's environment. The dispatcher case in `cli` then only has to forward arguments.
-
-Two relocation strategies, chosen by inspecting `git ls-files`:
-
-1. **Tracked source** — `git mv` so the rename appears as a rename in history rather than a delete + add.
-2. **Untracked source** — plain `mv`, since `git mv` would refuse.
-
-Two link-rewrite strategies, chosen by uniqueness:
-
-1. **Path reference** — `[[some/dir/old]]` matches the relative path from repo root, dropping the `.lit.mdx` or `.md` extension. Always rewritten when seen.
-2. **Bare-basename reference** — `[[old]]` matches when the basename `old` is unique tree-wide. If two files share a basename, we cannot disambiguate from the link alone, so we log a warning and skip rather than corrupt unrelated links.
-
-The walker skips `.git` and any directory containing a nested `.git` (foreign LSMW projects or unrelated submodules), mirroring the `ignoreLiterateGitSubmodules = true` posture of the surrounding library.
+`obsidian-cli` (Yakitrak's [notesmd-cli](https://github.com/Yakitrak/notesmd-cli), headless, no Obsidian process required) is the UNIX library that already does wikilink-aware rename and delete "one thing well." `lsmw mv` and `lsmw rm` exec it verbatim. No bespoke link-rewrite, no `find`-with-prune walker, no sed regex over four wikilink shapes — that work belongs in obsidian-cli where it's tested by its own community. obsidian-cli is a Go binary not yet in nixpkgs; consumers install it on PATH (`go install github.com/Yakitrak/notesmd-cli@latest`) and the wrappers exec it. If it's missing, the wrappers fail with a clear hint.
 
 ```{.nix file=lib/init.nix as-a-real-non-nix-store-file="init module imported by the bootstrap"}
       mvVerb = pkgs.writeShellApplication {
         name = "lsmw-mv";
-        runtimeInputs = with pkgs; [ git findutils gnused coreutils ];
         text = ''
-          set -euo pipefail
-          if [ "$#" -ne 2 ]; then
-            echo "usage: lsmw mv <src> <dst>" >&2
-            exit 2
-          fi
-          src="$1"
-          dst="$2"
-          if [ ! -e "$src" ]; then
-            echo "lsmw mv: source does not exist: $src" >&2
-            exit 1
-          fi
-          repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-          src_abs="$(realpath -- "$src")"
-          rel_old_pre="$(realpath --relative-to="$repo_root" -- "$src_abs" 2>/dev/null || echo "$src")"
-          strip_md_ext() {
-            local p="$1"
-            p="''${p%.lit.mdx}"
-            p="''${p%.md}"
-            p="''${p%.mdx}"
-            printf '%s' "$p"
-          }
-          base_old_pre="$(basename -- "$(strip_md_ext "$rel_old_pre")")"
-          base_old_count=0
-          while IFS= read -r -d "" f; do
-            base_old_count=$((base_old_count + 1))
-          done < <(find "$repo_root" \
-              \( -name .git -prune \) -o \
-              \( -type d ! -path "$repo_root" -exec test -e {}/.git \; -prune \) -o \
-              \( -type f \( -name "$base_old_pre.md" -o -name "$base_old_pre.mdx" -o -name "$base_old_pre.lit.mdx" \) -print0 \))
-          dst_dir="$(dirname -- "$dst")"
-          mkdir -p "$dst_dir"
-          if git ls-files --error-unmatch -- "$src" >/dev/null 2>&1; then
-            git mv -- "$src" "$dst"
-          else
-            mv -- "$src" "$dst"
-          fi
-          rel_old="$rel_old_pre"
-          rel_new="$(realpath --relative-to="$repo_root" -- "$dst" 2>/dev/null || echo "$dst")"
-          path_old="$(strip_md_ext "$rel_old")"
-          path_new="$(strip_md_ext "$rel_new")"
-          base_old="$(basename -- "$path_old")"
-          base_new="$(basename -- "$path_new")"
-          esc() { printf '%s' "$1" | sed -e 's/[\/&.^$*[]/\\&/g'; }
-          path_old_re="$(esc "$path_old")"
-          base_old_re="$(esc "$base_old")"
-          path_new_lit="$(printf '%s' "$path_new" | sed -e 's/[\&/]/\\&/g')"
-          base_new_lit="$(printf '%s' "$base_new" | sed -e 's/[\&/]/\\&/g')"
-          tmp_list="$(mktemp)"
-          trap 'rm -f "$tmp_list"' EXIT
-          find "$repo_root" \
-              \( -name .git -prune \) -o \
-              \( -type d ! -path "$repo_root" -exec test -e {}/.git \; -prune \) -o \
-              \( -type f \( -name "*.md" -o -name "*.mdx" -o -name "*.lit.mdx" \) -print0 \) \
-              > "$tmp_list"
-          while IFS= read -r -d "" f; do
-            sed -i \
-              -e "s/\[\[$path_old_re\(#\([^]|]*\)\)\?\(|\([^]]*\)\)\?\]\]/[[$path_new_lit\1\3]]/g" \
-              "$f"
-            if [ "$base_old_count" -le 1 ] && [ "$base_old" != "$path_old" ]; then
-              sed -i \
-                -e "s/\[\[$base_old_re\(#\([^]|]*\)\)\?\(|\([^]]*\)\)\?\]\]/[[$base_new_lit\1\3]]/g" \
-                "$f"
-            fi
-          done < "$tmp_list"
-          if [ "$base_old_count" -gt 1 ] && [ "$base_old" != "$path_old" ]; then
-            echo "lsmw mv: bare basename '$base_old' is not unique ($base_old_count files); bare-basename links left untouched" >&2
-          fi
-          echo "lsmw mv: $rel_old -> $rel_new"
+          command -v obsidian-cli >/dev/null || { echo "lsmw mv requires obsidian-cli on PATH (go install github.com/Yakitrak/notesmd-cli@latest)" >&2; exit 1; }
+          exec obsidian-cli move "$@"
         '';
       };
-```
-
-## The rm verb — wikilink-aware filesystem delete
-
-`mv` rewrites links to follow a moved target; `rm` does the dual: it deletes a file and replaces every inbound wikilink with a `[[REMOVED: <old-target>]]` marker. The deletion site becomes visibly broken in prose rather than silently dangling — readers see the gap, automated tooling can grep for `REMOVED:` to surface obsolete references, and the original target name is preserved for forensic purposes (log, recover, decide whether the reference should be re-targeted).
-
-Same shape as `mv`: tracked sources go through `git rm`, untracked through plain `rm`. The walker uses the same find-with-submodule-prune logic and the same regex over the four wikilink shapes (bare, path, anchor, anchor-and-alias). The only difference is the replacement target — instead of substituting a new path, it substitutes the visible REMOVED marker that preserves the alias text when one was present.
-
-```{.nix file=lib/init.nix as-a-real-non-nix-store-file="init module imported by the bootstrap"}
       rmVerb = pkgs.writeShellApplication {
         name = "lsmw-rm";
-        runtimeInputs = with pkgs; [ git findutils gnused coreutils ];
         text = ''
-          set -euo pipefail
-          if [ "$#" -ne 1 ]; then
-            echo "usage: lsmw rm <path>" >&2
-            exit 2
-          fi
-          src="$1"
-          if [ ! -e "$src" ]; then
-            echo "lsmw rm: source does not exist: $src" >&2
-            exit 1
-          fi
-          repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-          src_abs="$(realpath -- "$src")"
-          rel_old="$(realpath --relative-to="$repo_root" -- "$src_abs" 2>/dev/null || echo "$src")"
-          strip_md_ext() {
-            local p="$1"
-            p="''${p%.lit.mdx}"
-            p="''${p%.md}"
-            p="''${p%.mdx}"
-            printf '%s' "$p"
-          }
-          path_old="$(strip_md_ext "$rel_old")"
-          base_old="$(basename -- "$path_old")"
-          base_old_count=0
-          while IFS= read -r -d "" f; do
-            base_old_count=$((base_old_count + 1))
-          done < <(find "$repo_root" \
-              \( -name .git -prune \) -o \
-              \( -type d ! -path "$repo_root" -exec test -e {}/.git \; -prune \) -o \
-              \( -type f \( -name "$base_old.md" -o -name "$base_old.mdx" -o -name "$base_old.lit.mdx" \) -print0 \))
-          if git ls-files --error-unmatch -- "$src" >/dev/null 2>&1; then
-            git rm -f -- "$src" >/dev/null
-          else
-            rm -f -- "$src"
-          fi
-          esc() { printf '%s' "$1" | sed -e 's/[\/&.^$*[]/\\&/g'; }
-          path_old_re="$(esc "$path_old")"
-          base_old_re="$(esc "$base_old")"
-          path_old_lit="$(printf '%s' "$path_old" | sed -e 's/[\&/]/\\&/g')"
-          base_old_lit="$(printf '%s' "$base_old" | sed -e 's/[\&/]/\\&/g')"
-          tmp_list="$(mktemp)"
-          trap 'rm -f "$tmp_list"' EXIT
-          find "$repo_root" \
-              \( -name .git -prune \) -o \
-              \( -type d ! -path "$repo_root" -exec test -e {}/.git \; -prune \) -o \
-              \( -type f \( -name "*.md" -o -name "*.mdx" -o -name "*.lit.mdx" \) -print0 \) \
-              > "$tmp_list"
-          while IFS= read -r -d "" f; do
-            sed -i \
-              -e "s/\[\[$path_old_re\(#[^]|]*\)\?\(|[^]]*\)\?\]\]/[[REMOVED: $path_old_lit]]/g" \
-              "$f"
-            if [ "$base_old_count" -le 1 ] && [ "$base_old" != "$path_old" ]; then
-              sed -i \
-                -e "s/\[\[$base_old_re\(#[^]|]*\)\?\(|[^]]*\)\?\]\]/[[REMOVED: $base_old_lit]]/g" \
-                "$f"
-            fi
-          done < "$tmp_list"
-          if [ "$base_old_count" -gt 1 ] && [ "$base_old" != "$path_old" ]; then
-            echo "lsmw rm: bare basename '$base_old' is not unique ($base_old_count files); bare-basename links left untouched" >&2
-          fi
-          echo "lsmw rm: $rel_old (links replaced with [[REMOVED: ...]])"
+          command -v obsidian-cli >/dev/null || { echo "lsmw rm requires obsidian-cli on PATH (go install github.com/Yakitrak/notesmd-cli@latest)" >&2; exit 1; }
+          exec obsidian-cli delete "$@"
         '';
       };
 ```
@@ -386,9 +237,9 @@ TOML
 
 ## mkChecks: library-internal self-testing
 
-Consumers use `makeVerify` (which returns packages); the library itself needs to expose `checks.*` for `nix flake check`. `mkChecks` wires the internal test suite (`tangle-idempotent`, `tangle-immutable`, `unit-tests`, integration tests, water-model tests, and `mv-rewrites-wikilinks`) into a single attrset ready to merge under `checks.${system}`. The bootstrap above calls it once.
+Consumers use `makeVerify` (which returns packages); the library itself needs to expose `checks.*` for `nix flake check`. `mkChecks` wires the internal test suite (`tangle-idempotent`, `tangle-immutable`, `unit-tests`, integration tests, water-model tests) into a single attrset under `checks.${system}`. The bootstrap calls it once.
 
-The `mv-rewrites-wikilinks` check builds an init result on a tiny fixture, extracts its `mvVerb`, runs `lsmw-mv` against a synthetic source tree containing all four wikilink shapes (bare, path, anchor, anchor+alias), and asserts every shape was rewritten in the consumer prose. This is the load-bearing eval-assertion for the `mv` verb: if the regex breaks or the prune logic regresses, the check fails before `nix build` succeeds.
+`lsmw mv`/`rm` correctness is owned upstream by [obsidian-cli](https://github.com/Yakitrak/notesmd-cli); we don't ship a fixture check that re-tests it — would duplicate upstream work and pin obsidian-cli's behavior to a snapshot we'd have to maintain.
 
 ```{.nix file=lib/init.nix as-a-real-non-nix-store-file="init module imported by the bootstrap"}
   mkChecks = { pkgs, tangled, pipeline, checksLib, init, src }:
@@ -402,107 +253,6 @@ The `mv-rewrites-wikilinks` check builds an init result on a tiny fixture, extra
       waterModelTests = import "${tangled}/tests/water-model.nix" {
         inherit pkgs lib checksLib;
       };
-      probeInit = init {
-        inherit pkgs src;
-        sourceDir = "literate.lit.mdx";
-        ignoreLiterateGitSubmodules = true;
-      };
-      probeMv = probeInit.packages.${pkgs.stdenv.hostPlatform.system}.mvVerb;
-      probeRm = probeInit.packages.${pkgs.stdenv.hostPlatform.system}.rmVerb;
-      rmInvalidatesWikilinks = pkgs.runCommand "rm-invalidates-wikilinks" {
-        nativeBuildInputs = [ pkgs.git probeRm ];
-      } ''
-        export HOME=$TMPDIR
-        export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t
-        export GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
-        mkdir fixture && cd fixture
-        mkdir subdir
-        printf '%s\n' \
-          'Bare: [[gone]].' \
-          'Alias: [[gone|click]].' \
-          'Anchor: [[gone#sec]].' \
-          'Both: [[gone#sec|click]].' \
-          'Path: [[subdir/gone]].' \
-          'PathAlias: [[subdir/gone|c]].' \
-          'Unrelated: [[other]].' \
-          > ref.md
-        echo "x" > subdir/gone.md
-        echo "y" > other.md
-        git init -q
-        git add -A
-        git commit -qm init
-        lsmw-rm subdir/gone.md
-        if [ -e subdir/gone.md ]; then
-          echo "FAIL: subdir/gone.md was not removed" >&2
-          exit 1
-        fi
-        if grep -q '\[\[gone' ref.md; then
-          echo "FAIL: bare/anchor/alias 'gone' references not invalidated" >&2
-          cat ref.md >&2
-          exit 1
-        fi
-        if grep -q '\[\[subdir/gone' ref.md; then
-          echo "FAIL: path 'subdir/gone' references not invalidated" >&2
-          cat ref.md >&2
-          exit 1
-        fi
-        if ! grep -q '\[\[REMOVED: subdir/gone\]\]' ref.md; then
-          echo "FAIL: expected [[REMOVED: subdir/gone]] marker present" >&2
-          cat ref.md >&2
-          exit 1
-        fi
-        if ! grep -q '\[\[REMOVED: gone\]\]' ref.md; then
-          echo "FAIL: expected [[REMOVED: gone]] marker for bare-basename links" >&2
-          cat ref.md >&2
-          exit 1
-        fi
-        if ! grep -qF '[[other]]' ref.md; then
-          echo "FAIL: unrelated [[other]] reference was incorrectly modified" >&2
-          cat ref.md >&2
-          exit 1
-        fi
-        touch "$out"
-      '';
-      mvRewritesWikilinks = pkgs.runCommand "mv-rewrites-wikilinks" {
-        nativeBuildInputs = [ pkgs.git probeMv ];
-      } ''
-        export HOME=$TMPDIR
-        export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t
-        export GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
-        mkdir fixture && cd fixture
-        mkdir subdir
-        printf '%s\n' \
-          'Bare: [[uniq]].' \
-          'Alias: [[uniq|click]].' \
-          'Anchor: [[uniq#sec]].' \
-          'Both: [[uniq#sec|click]].' \
-          'Path: [[subdir/uniq]].' \
-          'PathAlias: [[subdir/uniq|c]].' \
-          > ref.md
-        echo "x" > subdir/uniq.md
-        git init -q
-        git add -A
-        git commit -qm init
-        lsmw-mv subdir/uniq.md subdir/renamed.md
-        if grep -q '\[\[uniq' ref.md; then
-          echo "FAIL: bare/anchor/alias 'uniq' references not rewritten" >&2
-          cat ref.md >&2
-          exit 1
-        fi
-        if grep -q '\[\[subdir/uniq' ref.md; then
-          echo "FAIL: path 'subdir/uniq' references not rewritten" >&2
-          cat ref.md >&2
-          exit 1
-        fi
-        for shape in 'renamed]]' 'renamed|click]]' 'renamed#sec]]' 'renamed#sec|click]]' 'subdir/renamed]]' 'subdir/renamed|c]]'; do
-          if ! grep -qF "[[$shape" ref.md; then
-            echo "FAIL: expected shape [[$shape in ref.md" >&2
-            cat ref.md >&2
-            exit 1
-          fi
-        done
-        touch "$out"
-      '';
     in {
       tangle-idempotent = checksLib.checkIdempotent { inherit src pkgs; };
       tangle-immutable = checksLib.checkImmutable {
@@ -510,8 +260,6 @@ The `mv-rewrites-wikilinks` check builds an init result on a tiny fixture, extra
         inherit pkgs;
       };
       unit-tests = import "${tangled}/tests/unit-check.nix" { inherit pkgs lib checksLib; };
-      mv-rewrites-wikilinks = mvRewritesWikilinks;
-      rm-invalidates-wikilinks = rmInvalidatesWikilinks;
     }
     // prefixed "integration" integrationTests
     // prefixed "water-model" waterModelTests;
