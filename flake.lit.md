@@ -175,14 +175,15 @@ Every verb invocation acquires an exclusive `flock` on `${vault}/.lsmw.lock` and
           case "''${1:-}" in
             inline)
               shift; file="$1"; title="$2"
-              task_file=$( { rg -lF --no-ignore --hidden "title: \"$title\"" "$vault" --glob '*.md' 2>/dev/null || true; } | head -n1)
-              rel=$(realpath --relative-to="$vault" "$file"); stem=''${rel%.lit.md}; stem=''${stem%.lit.mdx}; stem=''${stem%.md}; stem=''${stem%.mdx}
               ( flock 200
+                # Read-then-write must be atomic under the lock; concurrent calls without an existing task would otherwise clobber each other's TaskNotes/<slug>.md.
+                task_file=$( { rg -lF --no-ignore --hidden "title: \"$title\"" "$vault" --glob '*.md' 2>/dev/null || true; } | head -n1)
+                rel=$(realpath --relative-to="$vault" "$file"); stem=''${rel%.lit.md}; stem=''${stem%.lit.mdx}; stem=''${stem%.md}; stem=''${stem%.mdx}
                 if [ -z "$task_file" ]; then
                   slug=$(slugify "$title")
                   task_file="$vault/TaskNotes/$slug.md"
                   mkdir -p "$(dirname "$task_file")"
-                  printf -- '---\ntitle: "%s"\nstatus: open\ncreated: %s\n---\n\n# %s\n' "$title" "$(date -I)" "$title" > "$task_file"
+                  [ -e "$task_file" ] || printf -- '---\ntitle: "%s"\nstatus: open\ncreated: %s\n---\n\n# %s\n' "$title" "$(date -I)" "$title" > "$task_file"
                 fi
                 printf '\n- [[%s]]\n' "$title" >> "$file"
                 yq -i --front-matter=process ".referenced_in = ((.referenced_in // []) + [\"[[$stem]]\"] | unique)" "$task_file"

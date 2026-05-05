@@ -178,28 +178,24 @@ No default post-tangle checks. Block-length is already checked pre-tangle with c
   collectNativeBuildInputs = checks:
     builtins.concatLists (map (check: check.nativeBuildInputs or [ ]) checks);
 
-  renderChecks = phase: checks:
+  renderChecks = phase: checks: let tag = "[${config.name}:${phase}]"; in
     builtins.concatStringsSep "\n" (map
-      (check:
+      (check: let
+        header = ''echo "${tag} ${check.description or check.name}"'';
+        body = ''( cd ${lib.escapeShellArg (check.cwd or ".")}; ${check.command} )'';
+      in
         if (check.mode or "error") == "warn" then ''
-          echo "[literate-state-machine-wiki:${phase}] ${check.description or check.name}"
+          ${header}
           set +e
-          (
-            set -euo pipefail
-            cd ${lib.escapeShellArg (check.cwd or ".")}
-            ${check.command}
-          )
+          ( set -euo pipefail; cd ${lib.escapeShellArg (check.cwd or ".")}; ${check.command} )
           status=$?
           set -e
           if [ "$status" -ne 0 ]; then
-            echo "[literate-state-machine-wiki:${phase}] WARNING: ${check.name} failed with exit code $status"
+            echo "${tag} WARNING: ${check.name} failed with exit code $status"
           fi
         '' else ''
-          echo "[literate-state-machine-wiki:${phase}] ${check.description or check.name}"
-          (
-            cd ${lib.escapeShellArg (check.cwd or ".")}
-            ${check.command}
-          )
+          ${header}
+          ${body}
         '')
       checks);
 ```
