@@ -6,7 +6,7 @@ tags: [lsmw, flake, bootstrap, init, api]
 
 # Bootstrap and consumer API
 
-This file is flat at the LSMW project root — the one exception to "everything literate lives under `literate.lit.mdx/`". The exception exists because Nix requires `flake.nix` at the flake root, and we want the flake.nix to be derived from prose like the rest of the library. Every change to the bootstrap or the `init` contract happens here, then `entangled tangle` rewrites both `flake.nix` (root) and `lib/init.nix` (under the tangle tree). The committed `flake.nix` is always a function of this file.
+This file is flat at the LSMW project root — the one exception to "everything literate lives under `literate.lit.md/`". The exception exists because Nix requires `flake.nix` at the flake root, and we want the flake.nix to be derived from prose like the rest of the library. Every change to the bootstrap or the `init` contract happens here, then `entangled tangle` rewrites both `flake.nix` (root) and `lib/init.nix` (under the tangle tree). The committed `flake.nix` is always a function of this file.
 
 ## Why the bootstrap exists at all
 
@@ -14,7 +14,7 @@ Nix evaluates `flake.nix` before any user code runs. There is no opportunity to 
 
 ```{.nix file=flake.nix as-a-real-non-nix-store-file="bootstrap stays on disk because Nix reads flake.nix before any IFD"}
 {
-  description = "literate-state-machine-wiki — root bootstrap (tangled from flake.lit.mdx)";
+  description = "literate-state-machine-wiki — root bootstrap (tangled from flake.lit.md)";
 
   inputs = {
     nixpkgs.url = "nixpkgs";
@@ -28,7 +28,7 @@ Nix evaluates `flake.nix` before any user code runs. There is no opportunity to 
 
 ## IFD-tangle of the literate source
 
-The bootstrap copies `literate.lit.mdx/` into the store, writes a minimal `entangled.toml`, runs entangled, and removes `.entangled/` so the result is reproducible. The output is a tangled tree we can `import` `lib/*.nix` from.
+The bootstrap copies `literate.lit.md/` into the store, writes a minimal `entangled.toml`, runs entangled, and removes `.entangled/` so the result is reproducible. The output is a tangled tree we can `import` `lib/*.nix` from.
 
 ```{.nix file=flake.nix as-a-real-non-nix-store-file="bootstrap"}
   outputs = { self, nixpkgs, entangled }:
@@ -41,13 +41,13 @@ The bootstrap copies `literate.lit.mdx/` into the store, writes a minimal `entan
         nativeBuildInputs = [ entangled.packages.${system}.default ];
       } ''
         mkdir -p $out
-        cp -r ${./literate.lit.mdx} $out/literate.lit.mdx
-        cp ${./flake.lit.mdx} $out/flake.lit.mdx
+        cp -r ${./literate.lit.md} $out/literate.lit.md
+        cp ${./flake.lit.md} $out/flake.lit.md
         chmod -R u+w $out
         cd $out
         cat > entangled.toml <<'TOML'
 version = "2.0"
-watch_list = ["flake.lit.mdx", "literate.lit.mdx/**/*.lit.mdx"]
+watch_list = ["flake.lit.md", "literate.lit.md/**/*.lit.md", "literate.lit.md/**/*.lit.mdx"]
 annotation = "standard"
 [[languages]]
 name = "Nix"
@@ -92,7 +92,7 @@ After the IFD-tangle, every `.nix` under `lib/` is in the store. The bootstrap i
       (init {
         inherit pkgs;
         src = ./.;
-        sourceDir = "literate.lit.mdx";
+        sourceDir = "literate.lit.md";
         ignoreLiterateGitSubmodules = true;
       }) // {
         lib = {
@@ -116,7 +116,7 @@ After the IFD-tangle, every `.nix` under `lib/` is in the store. The bootstrap i
 
 `init` is the one function consumers call on LSMW. It takes a literate source, a list of `postTangle` hooks, and the consumer's stance on git submodules, and returns a flake-shaped attrset (`packages`, `devShells`, optional `checks`). Every other helper in this module is a private composition stage that `init` orchestrates.
 
-The `ignoreLiterateGitSubmodules` parameter is mandatory — no default. The flag declares what happens when LSMW finds nested git repositories (registered submodules or any directory containing `.git`) inside `src`. `true` means nested repos are foreign LSMW projects whose `.lit.mdx` files belong to those projects; LSMW will not tangle them here. `false` means the consumer accepts responsibility for resolving the tangling collisions and ownership questions that arise when one LSMW project literates over another. Making it required prevents the silent default that conflates two genuinely different intents.
+The `ignoreLiterateGitSubmodules` parameter is mandatory — no default. The flag declares what happens when LSMW finds nested git repositories (registered submodules or any directory containing `.git`) inside `src`. `true` means nested repos are foreign LSMW projects whose `.lit.md` files belong to those projects; LSMW will not tangle them here. `false` means the consumer accepts responsibility for resolving the tangling collisions and ownership questions that arise when one LSMW project literates over another. Making it required prevents the silent default that conflates two genuinely different intents.
 
 ```{.nix file=lib/init.nix as-a-real-non-nix-store-file="init module imported by the bootstrap"}
 { lib, pkgs, config, pipeline, checksLib, devshellLib }:
@@ -127,7 +127,7 @@ rec {
     system ? "x86_64-linux",
     postTangle ? [ ],
     until ? null,
-    sourceDir ? "literate.lit.mdx",
+    sourceDir ? "literate.lit.md",
     enforceDirectoryMatch ? false,
     ignoreLiterateGitSubmodules
   }:
@@ -255,7 +255,7 @@ Consumers don't see which binary handled the call. Every verb invocation acquire
 
 ## tangleAndRead: IFD helper for consumers
 
-Some consumers need a tangled file at evaluation time — a `package.json` derived from `package.lit.mdx` to feed `importNpmLock` or `bun2nix`, for example. `tangleAndRead` runs entangled inside a fixed-output-style derivation, then reads one specific file from the result. Gridinstruments uses this to drive its npm lockfile pipeline without committing JSON.
+Some consumers need a tangled file at evaluation time — a `package.json` derived from `package.lit.md` to feed `importNpmLock` or `bun2nix`, for example. `tangleAndRead` runs entangled inside a fixed-output-style derivation, then reads one specific file from the result. Gridinstruments uses this to drive its npm lockfile pipeline without committing JSON.
 
 ```{.nix file=lib/init.nix as-a-real-non-nix-store-file="init module imported by the bootstrap"}
   tangleAndRead = { pkgs, src, file }: builtins.readFile "${

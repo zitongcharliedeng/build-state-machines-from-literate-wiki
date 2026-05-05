@@ -1,5 +1,5 @@
 {
-  description = "literate-state-machine-wiki — root bootstrap (tangled from flake.lit.mdx)";
+  description = "literate-state-machine-wiki — root bootstrap (tangled from flake.lit.md)";
 
   inputs = {
     nixpkgs.url = "nixpkgs";
@@ -19,13 +19,13 @@
         nativeBuildInputs = [ entangled.packages.${system}.default ];
       } ''
         mkdir -p $out
-        cp -r ${./literate.lit.mdx} $out/literate.lit.mdx
-        cp ${./flake.lit.mdx} $out/flake.lit.mdx
+        cp -r ${./literate.lit.md} $out/literate.lit.md
+        cp ${./flake.lit.md} $out/flake.lit.md
         chmod -R u+w $out
         cd $out
         cat > entangled.toml <<'TOML'
 version = "2.0"
-watch_list = ["flake.lit.mdx", "literate.lit.mdx/**/*.lit.mdx"]
+watch_list = ["flake.lit.md", "literate.lit.md/**/*.lit.md", "literate.lit.md/**/*.lit.mdx"]
 annotation = "standard"
 [[languages]]
 name = "Nix"
@@ -63,7 +63,7 @@ TOML
       (init {
         inherit pkgs;
         src = ./.;
-        sourceDir = "literate.lit.mdx";
+        sourceDir = "literate.lit.md";
         ignoreLiterateGitSubmodules = true;
       }) // {
         lib = {

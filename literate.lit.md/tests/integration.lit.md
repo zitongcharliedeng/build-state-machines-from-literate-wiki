@@ -10,7 +10,7 @@ Unit tests prove the DAG helpers are correct in isolation. Integration tests pro
 
 ## Fixture structure
 
-Each fixture is a derivation produced by `mkFixture`: it writes a minimal `literate.lit.mdx/hello.lit.mdx` to a temp tree, then builds it with `lib.init` and the fixture's `postTangle` hooks. The derivation either:
+Each fixture is a derivation produced by `mkFixture`: it writes a minimal `literate.lit.md/hello.lit.md` to a temp tree, then builds it with `lib.init` and the fixture's `postTangle` hooks. The derivation either:
 
 - **Succeeds** — the fixture expects the build to pass. We assert the tangled output exists.
 - **Fails** — the fixture expects the build to fail (e.g. a hook in error mode). We wrap it in `builtins.tryEval` or run a child `nix-build` that we expect to exit non-zero.
@@ -22,7 +22,7 @@ The fixtures here cover the state machine transitions visible from the outside o
 `mkFixture` takes a name, a literate source string, and a `postTangle` list, then produces a derivation that runs the full `makeVerify` pipeline on that fixture. Since we cannot call `lib.init` directly from inside another derivation's build phase (that would be IFD within IFD), we build the fixture tree in one derivation and pass it to `lib.init` at eval time using `pkgs.writeTextFile` + `pkgs.runCommand`.
 
 ```{.nix file=tests/integration.nix}
-# Generated from literate.lit.mdx/tests/integration.lit.mdx — DO NOT EDIT
+# Generated from literate.lit.md/tests/integration.lit.md — DO NOT EDIT
 { pkgs, lib, lsmwInit }:
 
 let
@@ -44,11 +44,11 @@ let
     ```
   '';
 
-  # Build a fixture source tree as a derivation containing literate.lit.mdx/hello.lit.mdx
+  # Build a fixture source tree as a derivation containing literate.lit.md/hello.lit.md
   mkFixtureTree = { name, litContent }:
     pkgs.runCommand "fixture-${name}-tree" { } ''
-      mkdir -p $out/literate.lit.mdx
-      cat > $out/literate.lit.mdx/hello.lit.mdx <<'LIT_EOF'
+      mkdir -p $out/literate.lit.md
+      cat > $out/literate.lit.md/hello.lit.md <<'LIT_EOF'
       ${litContent}
       LIT_EOF
     '';
@@ -61,7 +61,7 @@ let
       outputs = lsmwInit {
         inherit pkgs postTangle until minProseLines maxBlockLength;
         src = tree;
-        sourceDir = "literate.lit.mdx";
+        sourceDir = "literate.lit.md";
       };
     in outputs.packages.${pkgs.stdenv.hostPlatform.system}.default;
 

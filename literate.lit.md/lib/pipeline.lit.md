@@ -10,7 +10,7 @@ This module copies sources into a build sandbox, runs Entangled, strips generate
 
 ## Module signature
 ```{.nix file=lib/pipeline.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
-# ~~ This file is generated from literate.lit.mdx/nix/pipeline.lit.mdx
+# ~~ This file is generated from literate.lit.md/nix/pipeline.lit.mdx
 { lib, config }:
 rec {
 ```
@@ -235,7 +235,7 @@ Produces a deployable directory from literate sources, resolving `[[wiki links]]
     src,
     pkgs,
     name ? "literate-state-machine-wiki-docs",
-    litSourceDir ? "literate.lit.mdx"
+    litSourceDir ? "literate.lit.md"
   }:
     pkgs.runCommand name {
       nativeBuildInputs = [ pkgs.python3 ];

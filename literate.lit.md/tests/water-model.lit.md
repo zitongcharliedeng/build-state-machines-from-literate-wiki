@@ -6,7 +6,7 @@ tags: [tests, water-model, shell, nix]
 
 # Water Model Shell-Level Tests
 
-The hook execution logic lives in two places: the pure nix helpers (`validateNeeds`, `resolveClosure`, `filterUntil` — tested in `unit.lit.mdx`) that decide **which** hooks run, and the generated shell script from `renderChecksWaterModel` that decides **how** they run and propagate failures. Integration tests exercise the whole pipeline through `lsmwInit`, but they can only observe end-state outputs — they can't easily assert "the build failed" because a failed derivation produces no output to inspect.
+The hook execution logic lives in two places: the pure nix helpers (`validateNeeds`, `resolveClosure`, `filterUntil` — tested in `unit.lit.md`) that decide **which** hooks run, and the generated shell script from `renderChecksWaterModel` that decides **how** they run and propagate failures. Integration tests exercise the whole pipeline through `lsmwInit`, but they can only observe end-state outputs — they can't easily assert "the build failed" because a failed derivation produces no output to inspect.
 
 These shell-level tests close that gap. They render `renderChecksWaterModel` with synthetic hook inputs directly, execute the resulting bash in a derivation, and assert exit codes and stdout patterns. No tangle pipeline, no fixture trees, no IFD tricks — just the state machine logic under test.
 
@@ -26,7 +26,7 @@ Transition 4 is the load-bearing one. If error-mode failures don't abort the pip
 Each test renders `renderChecksWaterModel` with a hand-crafted hook list, writes the resulting bash to a file, runs it with a fresh bash process, and asserts (a) the exit code, (b) the files the hooks wrote, (c) the log output. If a hook is supposed to skip, its marker file must NOT exist. If the pipeline is supposed to abort, the exit code must be non-zero.
 
 ```{.nix file=tests/water-model.nix}
-# Generated from literate.lit.mdx/tests/water-model.lit.mdx — DO NOT EDIT
+# Generated from literate.lit.md/tests/water-model.lit.md — DO NOT EDIT
 { pkgs, lib, checksLib }:
 
 let

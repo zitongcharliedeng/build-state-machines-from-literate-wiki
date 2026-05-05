@@ -12,7 +12,7 @@ This module takes `{ lib, config }` where `config` is the attrset produced by [[
 
 ## Why auto-tangle on shell entry?
 
-The canonical literate-state-machine-wiki workflow is: edit `.lit.mdx`, run `tangle`, read generated output. Without auto-tangle, a developer entering the shell after a `git pull` will have stale generated files with no indication anything is wrong. Auto-tangle on entry makes the shell self-healing: generated files always reflect the current literate sources before any `bun run` or `tsc` invocation can see them.
+The canonical literate-state-machine-wiki workflow is: edit `.lit.md`, run `tangle`, read generated output. Without auto-tangle, a developer entering the shell after a `git pull` will have stale generated files with no indication anything is wrong. Auto-tangle on entry makes the shell self-healing: generated files always reflect the current literate sources before any `bun run` or `tsc` invocation can see them.
 
 The `sourceGlobs` parameter controls whether auto-tangle fires. An empty list means "always tangle." A non-empty list uses `compgen -G` to check whether any matching files exist — if none do, the project has no literate sources and the shell skips the tangle step silently. This handles mono-repos where only some sub-packages are literate.
 
@@ -38,7 +38,7 @@ The caller's `shellHook` appends after all three layers, so consumer-specific me
     basePackages ? [ (config.nodejsFor pkgs) (config.pythonFor pkgs) ],
     extraPackages ? [ ],
     env ? { },
-    sourceGlobs ? [ "literate.lit.mdx/*.lit.mdx" "literate.lit.mdx/**/*.lit.mdx" ],
+    sourceGlobs ? [ "literate.lit.md/*.lit.md" "literate.lit.md/**/*.lit.md" "literate.lit.md/*.lit.mdx" "literate.lit.md/**/*.lit.mdx" ],
     tangleCommand ? null,
     shellHook ? ""
   }:

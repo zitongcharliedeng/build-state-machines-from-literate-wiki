@@ -23,7 +23,7 @@ The alternative — testing these helpers indirectly via `nix build` on fixture 
 Reusable test data. `linearChain` is `deps → tsc → test → build`, a straight pipeline. `diamond` has `deps` as a common root with `tsc` and `lint` branching off, both feeding `build` (classic diamond dependency). `disjoint` has two independent chains with no shared deps.
 
 ```{.nix file=tests/unit.nix}
-# Generated from literate.lit.mdx/tests/unit.lit.mdx — DO NOT EDIT
+# Generated from literate.lit.md/tests/unit.lit.md — DO NOT EDIT
 { lib, checksLib }:
 
 let
@@ -295,7 +295,7 @@ lib.runTests {
 The failure report is written to a store file via `pkgs.writeText` rather than interpolated directly into the shell script. Interpolation is brittle: if a test name contains shell metacharacters (backticks, `$`, quotes, etc.), the bash parser chokes and the developer sees a shell error instead of the actual test diff. Writing to a file and `cat`-ing it preserves the output verbatim regardless of content.
 
 ```{.nix file=tests/unit-check.nix}
-# Generated from literate.lit.mdx/tests/unit.lit.mdx — DO NOT EDIT
+# Generated from literate.lit.md/tests/unit.lit.md — DO NOT EDIT
 { pkgs, lib, checksLib }:
 
 let

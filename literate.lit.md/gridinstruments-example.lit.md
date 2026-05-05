@@ -27,7 +27,7 @@ A consumer adds literate-state-machine-wiki as a flake input, calls `lib.init`, 
       literate-state-machine-wiki.lib.init {
         inherit pkgs;
         src = ./.;
-        sourceDir = "literate.lit.mdx";
+        sourceDir = "literate.lit.md";
 
         # Stage 3: linters (fast, deterministic)
         linters = [
@@ -59,8 +59,8 @@ A consumer adds literate-state-machine-wiki as a flake input, calls `lib.init`, 
 
 The escalating pipeline runs five stages. Each stage is a nix derivation depending on the previous. If any stage fails, the rest never build.
 
-1. **Pre-check** — validates all 65 `.lit.mdx` files have annotations, prose density, intro prose, no invisible blocks
-2. **Tangle** — Entangled extracts TypeScript from `.lit.mdx` into the project tree (hidden from the consumer)
+1. **Pre-check** — validates all 65 `.lit.md` files have annotations, prose density, intro prose, no invisible blocks
+2. **Tangle** — Entangled extracts TypeScript from `.lit.md` into the project tree (hidden from the consumer)
 3. **Lint** — `tsc --noEmit` and `ast-grep scan` run on the tangled output. Water model: both run, all violations shown
 4. **Test** — `npx playwright test` runs against the built app. Only if linting passed.
 5. **Install** — tangled TypeScript files go to nix store with chmod 444

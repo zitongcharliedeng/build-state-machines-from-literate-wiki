@@ -6,7 +6,7 @@ rec {
     system ? "x86_64-linux",
     postTangle ? [ ],
     until ? null,
-    sourceDir ? "literate.lit.mdx",
+    sourceDir ? "literate.lit.md",
     enforceDirectoryMatch ? false,
     ignoreLiterateGitSubmodules
   }:
@@ -154,7 +154,7 @@ TOML
       };
       probeInit = init {
         inherit pkgs src;
-        sourceDir = "literate.lit.mdx";
+        sourceDir = "literate.lit.md";
         ignoreLiterateGitSubmodules = true;
       };
       probeMv = probeInit.packages.${pkgs.stdenv.hostPlatform.system}.mvVerb;

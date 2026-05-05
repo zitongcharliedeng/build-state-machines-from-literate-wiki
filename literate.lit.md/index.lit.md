@@ -8,9 +8,15 @@ tags: [root, map-of-content]
 
 ## Purpose
 
-This is my build tool. Every project I write — in any language — uses it. It enforces one rule: all code is literate. Prose explains every line. Code lives inside `.lit.mdx` files. Generated source files are build artifacts, not things you edit.
+This is my build tool. Every project I write — in any language — uses it. It enforces one rule: all code is literate. Prose explains every line. Code lives inside `.lit.md` files. Generated source files are build artifacts, not things you edit.
 
 It wraps Entangled the way `cargo` wraps `rustc`. Entangled does the tangling. This tool adds the opinions, the checks, and the nix integration.
+
+## Default extension: `.lit.md`
+
+The default extension for literate sources is **`.lit.md`** — plain markdown with fenced-code-block attributes (entangled syntax). Obsidian and mdbase index `.md` natively, so the lsmw verbs (`lsmw mv`/`rm`/`todo`) work out of the box on the same vault and wikilinks resolve without configuration.
+
+`.lit.mdx` is also accepted everywhere — `enumerateLiterateFiles`, the watch lists, the find patterns, and the rename verbs all match both extensions. Use `.lit.mdx` per-file when that file needs JSX components, MDX `import`/`export`, or `{expression}` interpolation in prose. The MDX renderer (in `pipeline.buildWebWiki`) treats either extension the same; the JSX-aware path activates based on file content, not on the extension. Projects that need JSX everywhere can still pass `sourceDir = "..."` pointing at a directory of `.lit.mdx` files; lsmw doesn't care.
 
 ## What it does
 
@@ -32,8 +38,8 @@ literate-state-machine-wiki.lib.init { pkgs, src, linters, tests, ... }
 
 Five stages, four gates. Each stage is a nix derivation depending on the previous — nix's dependency graph IS the escalating pipeline. See [[lib/checks]] for the implementation.
 
-1. **Pre-tangle checks** — literate structure validation (annotations, prose density, no invisible blocks). Operates on `.lit.mdx` source, not generated code. Water model: all violations collected, shown at once.
-2. **Tangle** — Entangled extracts code from `.lit.mdx` (hidden, consumers never see it). Only runs if pre-checks pass.
+1. **Pre-tangle checks** — literate structure validation (annotations, prose density, no invisible blocks). Operates on `.lit.md` source, not generated code. Water model: all violations collected, shown at once.
+2. **Tangle** — Entangled extracts code from `.lit.md` (hidden, consumers never see it). Only runs if pre-checks pass.
 3. **Lint** — consumer's linters run on the tangled tree (`tsc`, `eslint`, `ast-grep` — whatever the language needs). Pass them as the `linters` argument. Water model. Only runs if tangle succeeds.
 4. **Test** — consumer's tests run on the tangled tree (playwright, vitest, nix eval — whatever verifies correctness). Pass them as the `tests` argument. Water model. Only runs if linting passes.
 5. **Install** — tangled targets extracted to nix store with chmod 444. Only runs if all previous stages pass.
@@ -44,7 +50,7 @@ The pipeline is an escalating sequence of gates. See [[lib/checks]] and [[lib/pi
 
 The modules, each doing one thing:
 
-- [[lib/pipeline]] — tangles `.lit.mdx` into generated files and installs to nix store
+- [[lib/pipeline]] — tangles `.lit.md` into generated files and installs to nix store
 - [[lib/checks]] — validates literate discipline (pre-tangle) and code quality (post-tangle), escalating with early fails between stages, water model within each stage
 - [[lib/devshell]] — development environment with auto-tangle on entry
 - [[lib/config]] — default `entangled.toml` and toolchain helpers
@@ -56,7 +62,7 @@ The modules, each doing one thing:
 
 ## The store output IS the product
 
-The full project tree — literate source, tangled code, and any artifacts produced by postTangle hooks — lives in the nix store after `literate-state-machine-wiki build`. Nothing is filtered out. The literate `.lit.mdx` files are documentation, readable prose, and can serve as static assets. The tangled code is the executable output. Whatever the consumer's hooks produce belongs in the store too.
+The full project tree — literate source, tangled code, and any artifacts produced by postTangle hooks — lives in the nix store after `literate-state-machine-wiki build`. Nothing is filtered out. The literate `.lit.md` files are documentation, readable prose, and can serve as static assets. The tangled code is the executable output. Whatever the consumer's hooks produce belongs in the store too.
 
 Nix garbage collection operates on entire store paths, not individual files. If a consumer doesn't reference the store output, nix GC removes the whole thing. The tool does not decide what's useful — the consumer does.
 
@@ -66,7 +72,7 @@ literate-state-machine-wiki is a hook system, like Claude Code hooks. The librar
 
 ## Forms emerge when needed
 
-Files only take their final form (JSON, TypeScript, YAML) at the moment they are consumed. Everything is `.lit.mdx` until the pipeline transforms it. This is the Taoism of file forms — wu wei, no forcing.
+Files only take their final form (JSON, TypeScript, YAML) at the moment they are consumed. Everything is `.lit.md` until the pipeline transforms it. This is the Taoism of file forms — wu wei, no forcing.
 
 `tangleAndRead` implements this principle: it tangles a specific file from literate source at nix eval time (via IFD), strips entangled markers, and returns clean content. The form emerges at the exact moment of need, is consumed, and dissolves. No committed JSON sitting in the repo waiting to be read.
 
@@ -74,7 +80,7 @@ Consumer example — npm deps without a committed `package.json`:
 ```
 npmDeps = pkgs.importNpmLock.buildNodeModules {
   package = builtins.fromJSON (literate-state-machine-wiki.lib.tangleAndRead {
-    inherit pkgs; src = ./literate.lit.mdx; file = "package.json";
+    inherit pkgs; src = ./literate.lit.md; file = "package.json";
   });
 };
 ```
@@ -85,12 +91,12 @@ The only exception: lockfiles (`flake.lock`, `package-lock.json`) are auto-gener
 
 Entangled tangles any language — the code block annotation declares the language and target file. The default `entangled.toml` includes language tables for TypeScript, Nix, CSS, HTML, Rust, Python, Bash, YAML, and JSON. Add more by overriding the config.
 
-The pre-tangle checks are language-agnostic (they inspect `.lit.mdx` structure, not code syntax). The post-tangle checks are language-specific (your linters, your rules).
+The pre-tangle checks are language-agnostic (they inspect `.lit.md` structure, not code syntax). The post-tangle checks are language-specific (your linters, your rules).
 
 ## Consumers
 
 - **gridinstruments** — isomorphic grid keyboard. 65 literate files, TypeScript + XState. The reference implementation. See [[gridinstruments-example]].
-- **NixOS system flake** — system configuration as literate `.lit.mdx` that tangles to `.nix` modules. Planned.
+- **NixOS system flake** — system configuration as literate `.lit.md` that tangles to `.nix` modules. Planned.
 - **Every future project** — this is the only way I build software.
 
 ## Generated files in the repo
@@ -104,4 +110,4 @@ These are read-only (444), carry entangled markers pointing to their literate so
 
 ## Self-reference
 
-This page is `index.lit.mdx`. It is part of the wiki it describes. The code blocks in the other pages tangle into the tool's source. The tool tangles the wiki that defines it — that is the bootstrap.
+This page is `index.lit.md`. It is part of the wiki it describes. The code blocks in the other pages tangle into the tool's source. The tool tangles the wiki that defines it — that is the bootstrap.

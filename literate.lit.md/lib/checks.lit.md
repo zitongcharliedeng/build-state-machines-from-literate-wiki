@@ -13,7 +13,7 @@ This module owns all validation logic for literate-state-machine-wiki projects, 
 The module uses `rec` so helpers can reference each other by name without argument threading.
 
 ```{.nix file=lib/checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
-# ~~ This file is generated from literate.lit.mdx/nix/checks.lit.mdx
+# ~~ This file is generated from literate.lit.md/nix/checks.lit.mdx
 { lib, config, pipeline }:
 rec {
 ```
@@ -353,7 +353,7 @@ Each check in `preTangleChecks` / `postTangleChecks` gets its own named derivati
 ```{.nix file=lib/checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
   makeChecks = {
     src, pkgs,
-    sourceDir ? "literate.lit.mdx",
+    sourceDir ? "literate.lit.md",
     tooltipCheckFile ? null,
     enforceDirectoryMatch ? false,
     stripGeneratedMarkers ? true,
@@ -455,7 +455,7 @@ Five stages, four gates:
 ```{.nix file=lib/checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
   makeVerify = {
     src, pkgs,
-    sourceDir ? "literate.lit.mdx",
+    sourceDir ? "literate.lit.md",
     tooltipCheckFile ? null,
     enforceDirectoryMatch ? false,
     stripGeneratedMarkers ? true,
