@@ -156,8 +156,8 @@ rec {
 Consumers don't see which binary handled the call. Every verb invocation acquires an exclusive `flock` on `${vault}/.lsmw.lock` and **blocks** until released — concurrent `lsmw mv`/`lsmw rm`/`lsmw todo` calls on the same vault serialise, never race.
 
 ```{.nix file=lib/init.nix as-a-real-non-nix-store-file="init module imported by the bootstrap"}
-      lsmwVerb = name: upstream: pkgs.writeShellApplication {
-        inherit name;
+      mkVerb = name: spec: pkgs.writeShellApplication ({ inherit name; } // spec);
+      notesmdVerb = name: upstream: mkVerb name {
         runtimeInputs = [ pkgs.util-linux ];
         text = ''
           bin=$(command -v notesmd || command -v obsidian-cli) || {
@@ -168,10 +168,9 @@ Consumers don't see which binary handled the call. Every verb invocation acquire
           exec flock "$vault/.lsmw.lock" "$bin" ${upstream} "$@"
         '';
       };
-      mvVerb = lsmwVerb "lsmw-mv" "move";
-      rmVerb = lsmwVerb "lsmw-rm" "delete";
-      todoVerb = pkgs.writeShellApplication {
-        name = "lsmw-todo";
+      mvVerb = notesmdVerb "lsmw-mv" "move";
+      rmVerb = notesmdVerb "lsmw-rm" "delete";
+      todoVerb = mkVerb "lsmw-todo" {
         runtimeInputs = [ pkgs.util-linux pkgs.yq-go pkgs.ripgrep pkgs.coreutils ];
         text = ''
           vault=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
@@ -197,8 +196,7 @@ Consumers don't see which binary handled the call. Every verb invocation acquire
           esac
         '';
       };
-      createVerb = pkgs.writeShellApplication {
-        name = "lsmw-create";
+      createVerb = mkVerb "lsmw-create" {
         runtimeInputs = [ pkgs.coreutils ];
         text = ''
           path="$1"
@@ -208,8 +206,7 @@ Consumers don't see which binary handled the call. Every verb invocation acquire
           printf -- '---\ntitle: "%s"\n---\n\n# %s\n\n' "$stem" "$stem" > "$path"
         '';
       };
-      writeVerb = pkgs.writeShellApplication {
-        name = "lsmw-write";
+      writeVerb = mkVerb "lsmw-write" {
         runtimeInputs = [ pkgs.coreutils pkgs.ripgrep ];
         text = ''
           file="$1"
