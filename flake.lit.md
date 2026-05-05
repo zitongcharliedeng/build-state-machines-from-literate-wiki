@@ -229,14 +229,10 @@ Every verb invocation acquires an exclusive `flock` on `${vault}/.lsmw.lock` and
 `cli` is the user-facing entry point on `PATH`. Dispatches subcommands to the verbs above; unknown verb → usage + exit 1.
 
 ```{.nix file=lib/init.nix as-a-real-non-nix-store-file="init module imported by the bootstrap"}
-      cli = pkgs.writeShellScriptBin "literate-state-machine-wiki" ''
+      cli = pkgs.writeShellScriptBin name ''
         set -euo pipefail
         case "''${1:-}" in
-          build)
-            echo "[literate-state-machine-wiki] Building literate project..."
-            nix build --no-link "''${2:-.}" "''${@:3}"
-            echo "[literate-state-machine-wiki] Build complete."
-            ;;
+          build) nix build --no-link "''${2:-.}" "''${@:3}" ;;
           mv|rename)
             shift
             exec ${mvVerb}/bin/lsmw-mv "$@"
