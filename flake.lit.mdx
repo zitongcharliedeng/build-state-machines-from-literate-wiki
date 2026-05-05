@@ -308,68 +308,6 @@ Same shape as `mv`: tracked sources go through `git rm`, untracked through plain
       };
 ```
 
-## The todo verb — aggregate TaskNotes (inline + standalone)
-
-LSMW projects integrate with [Obsidian TaskNotes](https://tasknotes.dev) in two formats:
-
-- **Inline (preferred)** — a checklist line in literate prose, tagged with `#tasknotes`, optionally linking to a standalone TaskNote: `- [ ] Open upstream PR ... #tasknotes #forgejo [[task-pr-upstream]]`. The inline line is what a reader sees in context; the wikilink resolves to the standalone file holding metadata (due dates, priority, project links).
-- **Standalone** — a separate `.md` file whose frontmatter declares `tags: [task]` per the TaskNotes plugin spec. The body is the task description; frontmatter holds `due`, `priority`, `status`, etc.
-
-`lsmw todo` walks the tree once, finds both forms, and prints them as `file:line | kind | status | description` sorted by file:line. No external API call (TaskNotes is an Obsidian plugin running client-side on the user's vault, not a service); the literate prose IS the task DB and `lsmw todo` is a CLI mirror of it. The walker uses the same `.git` and submodule prune logic as `mv`/`rm`. Only `.md` / `.mdx` / `.lit.mdx` files are scanned. Inline match: `^- \[([ x])\] .*#tasknotes`. Standalone match: a frontmatter `tags:` block whose array contains `task` (covers both `tags: [task]` flow and `tags:\n  - task` block-list forms). Checked status (`[x]`) is preserved so `lsmw todo | grep '| done'` audits completed work.
-
-```{.nix file=lib/init.nix as-a-real-non-nix-store-file="init module imported by the bootstrap"}
-      todoVerb = pkgs.writeShellApplication {
-        name = "lsmw-todo";
-        runtimeInputs = with pkgs; [ git findutils gnugrep gawk coreutils ];
-        text = ''
-          set -euo pipefail
-          repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-          tmp_list="$(mktemp)"
-          trap 'rm -f "$tmp_list"' EXIT
-          find "$repo_root" \
-              \( -name .git -prune \) -o \
-              \( -type d ! -path "$repo_root" -exec test -e {}/.git \; -prune \) -o \
-              \( -type f \( -name "*.md" -o -name "*.mdx" -o -name "*.lit.mdx" \) -print0 \) \
-              > "$tmp_list"
-          {
-            while IFS= read -r -d "" f; do
-              rel="''${f#"$repo_root"/}"
-              # Inline: checklist lines tagged #tasknotes
-              (grep -nE '^- \[[ xX]\] .*#tasknotes' "$f" 2>/dev/null || true) | while IFS=: read -r ln body; do
-                [ -n "''${ln:-}" ] || continue
-                status="todo"
-                if printf '%s' "$body" | grep -qE '^- \[[xX]\]'; then
-                  status="done"
-                fi
-                desc=$(printf '%s' "$body" | sed -E 's/^- \[[ xX]\] //')
-                printf '%s:%s | inline | %s | %s\n' "$rel" "$ln" "$status" "$desc"
-              done
-              # Standalone: frontmatter `tags:` containing `task`. Two YAML
-              # shapes covered: flow `tags: [task, ...]` and block list with
-              # `- task` under `tags:`. Frontmatter terminator is `^---$`.
-              awk -v rel="$rel" '
-                NR==1 && /^---$/ { in_fm=1; next }
-                in_fm && /^---$/ { exit }
-                in_fm && /^tags:[[:space:]]*\[/ {
-                  if ($0 ~ /(\[|, *)task( *,| *\])/ ) is_task=1
-                }
-                in_fm && /^tags:[[:space:]]*$/ { in_tags=1; next }
-                in_tags && /^[^[:space:]-]/ { in_tags=0 }
-                in_tags && /^[[:space:]]*-[[:space:]]+task[[:space:]]*$/ { is_task=1 }
-                in_fm && /^status:[[:space:]]*/ { sub(/^status:[[:space:]]*/, ""); st=$0 }
-                END {
-                  if (is_task) {
-                    if (st == "") st = "todo"
-                    printf "%s:1 | standalone | %s | %s\n", rel, st, rel
-                  }
-                }
-              ' "$f" 2>/dev/null || true
-            done < "$tmp_list"
-          } | sort
-        '';
-      };
-```
-
 ## The CLI dispatcher
 
 `cli` is the user-facing entry point on `PATH`. It dispatches subcommands to the helpers above. `build` invokes `nix build` against the consumer's flake; `mv` (alias `rename`) forwards two arguments to `lsmw-mv`; `rm` forwards one argument to `lsmw-rm`. Everything else prints usage and exits non-zero.
@@ -391,10 +329,6 @@ LSMW projects integrate with [Obsidian TaskNotes](https://tasknotes.dev) in two 
             shift
             exec ${rmVerb}/bin/lsmw-rm "$@"
             ;;
-          todo)
-            shift
-            exec ${todoVerb}/bin/lsmw-todo "$@"
-            ;;
           *)
             echo "literate-state-machine-wiki — opinionated literate build tool"
             echo ""
@@ -403,7 +337,11 @@ LSMW projects integrate with [Obsidian TaskNotes](https://tasknotes.dev) in two 
             echo "  literate-state-machine-wiki mv <src> <dst>"
             echo "  literate-state-machine-wiki rename <src> <dst>"
             echo "  literate-state-machine-wiki rm <path>"
-            echo "  literate-state-machine-wiki todo                 # list #tasknotes-tagged checklist items"
+            echo ""
+            echo "TaskNotes ops use the upstream CLIs directly:"
+            echo "  mtn create '<text>'                 (standalone TaskNote, no Obsidian needed)"
+            echo "  mtn list --json                     (enumerate standalones)"
+            echo "  obsidian tasknotes:capture vault=X text='...'  (live, NLP-parsed)"
             exit 1
             ;;
         esac
@@ -414,7 +352,7 @@ LSMW projects integrate with [Obsidian TaskNotes](https://tasknotes.dev) in two 
         literate-verified = verified.default;
         tangled = verified.tangled;
         web-wiki = pipeline.buildWebWiki { inherit pkgs src; litSourceDir = sourceDir; };
-        inherit cli mvVerb rmVerb todoVerb;
+        inherit cli mvVerb rmVerb;
       };
       devShells.${system}.default = devshellLib.mkDevShell {
         inherit pkgs;
