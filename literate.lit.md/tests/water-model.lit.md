@@ -6,82 +6,61 @@ tags: [tests, water-model, shell, nix]
 
 # Water Model Shell-Level Tests
 
-The hook execution logic lives in two places: the pure nix helpers (`validateNeeds`, `resolveClosure`, `filterUntil` — tested in `unit.lit.md`) that decide **which** hooks run, and the generated shell script from `renderChecksWaterModel` that decides **how** they run and propagate failures. Integration tests exercise the whole pipeline through `lsmwInit`, but they can only observe end-state outputs — they can't easily assert "the build failed" because a failed derivation produces no output to inspect.
+The hook execution logic lives in two places: pure-nix helpers (`validateNeeds`, `resolveClosure`, `filterUntil` — covered in `unit.lit.md`) decide **which** hooks run; the generated shell script from `renderChecksWaterModel` decides **how** they run and propagate failures. Integration tests exercise the whole pipeline through `lsmwInit`, but only observe end-state outputs — they can't easily assert "the build failed" because a failed derivation produces no output to inspect. These shell-level tests close that gap.
 
-These shell-level tests close that gap. They render `renderChecksWaterModel` with synthetic hook inputs directly, execute the resulting bash in a derivation, and assert exit codes and stdout patterns. No tangle pipeline, no fixture trees, no IFD tricks — just the state machine logic under test.
+The state-machine has four transitions: success → added to `_lsmw_passed`; warn-failure → still added (non-fatal); error-failure → counted in `_lsmw_errors`, dependents skip; pipeline-abort → if `_lsmw_errors > 0` at end, exit 1. Transition four is load-bearing — without it, error-mode failures silently pass and the library's safety guarantee is broken. The tests here render `renderChecksWaterModel` directly, run the bash with `set +e`, capture the exit code, and assert it matches the state machine's spec.
 
-## Why shell-level tests matter
+## Fixture builder
 
-The library's promise is a state machine with four transitions:
-
-1. **Success**: hook passes → added to `_lsmw_passed` → dependents can run
-2. **Warn failure**: hook fails, `mode = "warn"` → STILL added to `_lsmw_passed` → dependents run (non-fatal)
-3. **Error failure**: hook fails, default mode → NOT added to passed → `_lsmw_errors++` → dependents skip
-4. **Pipeline abort**: if `_lsmw_errors > 0` at end → `exit 1`
-
-Transition 4 is the load-bearing one. If error-mode failures don't abort the pipeline, the library's safety guarantee is broken. But a flake check derivation that asserts "the build fails" is awkward to construct — build failures don't leave output to inspect. The trick here: run the generated shell script with `set +e` inside a derivation we control, capture the exit code, and assert it matches what the state machine says.
-
-## Test fixture structure
-
-Each test renders `renderChecksWaterModel` with a hand-crafted hook list, writes the resulting bash to a file, runs it with a fresh bash process, and asserts (a) the exit code, (b) the files the hooks wrote, (c) the log output. If a hook is supposed to skip, its marker file must NOT exist. If the pipeline is supposed to abort, the exit code must be non-zero.
+`mkWaterModelTest` renders one hook list, runs the resulting bash, and asserts (a) exit code, (b) marker files written by hooks, (c) log output. Skipped hooks must NOT have their marker; aborted pipelines must exit non-zero.
 
 ```{.nix file=tests/water-model.nix}
-# Generated from literate.lit.md/tests/water-model.lit.md — DO NOT EDIT
 { pkgs, lib, checksLib }:
-
 let
-  # Execute a rendered water-model script and capture exit code + output.
-  # `hooks` is the nix list passed to renderChecksWaterModel; `phase` is a label.
-  # `expectExit` is the expected exit code (0 = success, 1 = pipeline abort).
-  # `assertions` is a shell snippet run AFTER the water-model script; it can
-  # inspect files created by hooks or check log content via the `$log` variable.
   mkWaterModelTest = { name, phase ? "test", hooks, expectExit ? 0, assertions ? "" }:
     pkgs.runCommand "water-model-${name}" {
       passAsFile = [ "script" ];
       script = checksLib.renderChecksWaterModel phase hooks;
     } ''
-      mkdir -p workdir
-      cd workdir
-
-      # Run the generated shell script and capture exit + log
+      mkdir -p workdir && cd workdir
       set +e
       log=$(bash "$scriptPath" 2>&1)
       exit_code=$?
       set -e
-
-      echo "--- water-model script ---"
-      cat "$scriptPath"
-      echo "--- stdout ---"
-      echo "$log"
+      echo "--- water-model script ---"; cat "$scriptPath"
+      echo "--- stdout ---"; echo "$log"
       echo "--- exit: $exit_code (expected: ${toString expectExit}) ---"
-
       if [ "$exit_code" != "${toString expectExit}" ]; then
-        echo "FAIL: exit code $exit_code, expected ${toString expectExit}"
-        exit 1
+        echo "FAIL: exit code $exit_code, expected ${toString expectExit}"; exit 1
       fi
-
       ${assertions}
-
-      echo "PASS: water-model ${name}"
-      touch "$out"
+      echo "PASS: water-model ${name}"; touch "$out"
     '';
 in {
-  # A single passing hook exits 0 and writes its marker.
+```
+
+## success-single — passing hook writes marker, exits 0
+
+The trivial baseline. One hook runs, succeeds, leaves its marker file.
+
+```{.nix file=tests/water-model.nix}
   success-single = mkWaterModelTest {
     name = "success-single";
-    hooks = [
-      { name = "a"; command = "echo 'ran' > a-marker"; }
-    ];
+    hooks = [ { name = "a"; command = "echo 'ran' > a-marker"; } ];
     expectExit = 0;
     assertions = ''
       if [ ! -f a-marker ] || [ "$(cat a-marker)" != "ran" ]; then
-        echo "FAIL: hook marker missing or wrong content"
-        exit 1
+        echo "FAIL: hook marker missing or wrong content"; exit 1
       fi
     '';
   };
+```
 
-  # A warn-mode hook that fails is recorded as "passed" so its dependent runs.
+## warn-propagates — warn failure still adds to `_lsmw_passed`
+
+A `mode = "warn"` hook that exits non-zero must STILL be marked passed so its dependent runs. Warn means "non-fatal, keep going" — different from error, which blocks dependents.
+
+```{.nix file=tests/water-model.nix}
   warn-propagates = mkWaterModelTest {
     name = "warn-propagates";
     hooks = [
@@ -91,37 +70,40 @@ in {
     expectExit = 0;
     assertions = ''
       if [ ! -f after-marker ]; then
-        echo "FAIL: dependent of warn-failed hook did not run"
-        exit 1
+        echo "FAIL: dependent of warn-failed hook did not run"; exit 1
       fi
     '';
   };
+```
 
-  # An error-mode hook failure does NOT add its name to _lsmw_passed, so
-  # any dependent hook with `needs = [ "failed" ]` is skipped. The pipeline
-  # aborts at the end (exit 1), but the dependent's marker is NEVER written.
+## error-mode-skips-dependents — error blocks downstream
+
+Default-mode hook failures do NOT add to `_lsmw_passed`. Any hook with `needs = [ "failed" ]` skips. The pipeline aborts at the end (exit 1), and the dependent's marker is NEVER written. Log emits `SKIPPED:` for the dependent.
+
+```{.nix file=tests/water-model.nix}
   error-mode-skips-dependents = mkWaterModelTest {
     name = "error-mode-skips-dependents";
     hooks = [
       { name = "error-fails"; command = "exit 1"; }
       { name = "should-skip"; command = "echo 'SHOULD-NOT-RUN' > skip-marker"; needs = [ "error-fails" ]; }
     ];
-    expectExit = 1;  # pipeline aborts due to error
+    expectExit = 1;
     assertions = ''
       if [ -f skip-marker ]; then
-        echo "FAIL: dependent of error-failed hook ran (should have skipped)"
-        cat skip-marker
-        exit 1
+        echo "FAIL: dependent of error-failed hook ran (should have skipped)"; cat skip-marker; exit 1
       fi
       if ! echo "$log" | grep -q "SKIPPED: should-skip"; then
-        echo "FAIL: no SKIPPED log message for should-skip hook"
-        exit 1
+        echo "FAIL: no SKIPPED log message for should-skip hook"; exit 1
       fi
     '';
   };
+```
 
-  # Even if later hooks (without needs) would pass, the _lsmw_errors counter
-  # causes the pipeline to exit 1 at the end.
+## error-mode-aborts-pipeline — counter forces exit 1
+
+Independent later hooks still run (no `needs`), but the `_lsmw_errors` counter forces `exit 1` at the end. Marker files for the independent successful hooks ARE written; the pipeline-level exit code reflects the failure.
+
+```{.nix file=tests/water-model.nix}
   error-mode-aborts-pipeline = mkWaterModelTest {
     name = "error-mode-aborts-pipeline";
     hooks = [
@@ -131,18 +113,17 @@ in {
     ];
     expectExit = 1;
     assertions = ''
-      if [ ! -f a-marker ]; then
-        echo "FAIL: a hook did not run"
-        exit 1
-      fi
-      if [ ! -f c-marker ]; then
-        echo "FAIL: c hook did not run (no needs → should run independent of b's failure)"
-        exit 1
-      fi
+      if [ ! -f a-marker ]; then echo "FAIL: a hook did not run"; exit 1; fi
+      if [ ! -f c-marker ]; then echo "FAIL: c hook did not run (no needs → should run independent of b's failure)"; exit 1; fi
     '';
   };
+```
 
-  # A → B → C where A is error-mode-fails. Both B and C should skip.
+## multi-level-skip — error propagates transitively
+
+A → B → C where A is error-mode-fails. B skips (needs A). C skips (needs B). Transitive skip is what makes the dependency graph honest — partial DAG execution is forbidden.
+
+```{.nix file=tests/water-model.nix}
   multi-level-skip = mkWaterModelTest {
     name = "multi-level-skip";
     hooks = [
@@ -153,20 +134,19 @@ in {
     expectExit = 1;
     assertions = ''
       if [ -f b-marker ] || [ -f c-marker ]; then
-        echo "FAIL: downstream hooks ran despite upstream error"
-        exit 1
+        echo "FAIL: downstream hooks ran despite upstream error"; exit 1
       fi
-      if ! echo "$log" | grep -q "SKIPPED: b"; then
-        echo "FAIL: no SKIPPED log for b"
-        exit 1
-      fi
-      if ! echo "$log" | grep -q "SKIPPED: c"; then
-        echo "FAIL: no SKIPPED log for c"
-        exit 1
-      fi
+      if ! echo "$log" | grep -q "SKIPPED: b"; then echo "FAIL: no SKIPPED log for b"; exit 1; fi
+      if ! echo "$log" | grep -q "SKIPPED: c"; then echo "FAIL: no SKIPPED log for c"; exit 1; fi
     '';
   };
+```
 
+## empty-hooks — no hooks is a successful pipeline
+
+The degenerate case. An empty hook list must exit 0 — no work means no failures.
+
+```{.nix file=tests/water-model.nix}
   empty-hooks = mkWaterModelTest {
     name = "empty-hooks";
     hooks = [];
