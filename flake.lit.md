@@ -108,6 +108,7 @@ After the IFD-tangle, every `.nix` under `lib/` is in the store. The bootstrap i
         checks.${system} = initModule.mkChecks {
           inherit pkgs tangled pipeline checksLib init;
           todoVerb = lsmwOutputs.packages.${system}.todoVerb;
+          writeVerb = lsmwOutputs.packages.${system}.writeVerb;
           src = ./.;
         };
 
@@ -153,21 +154,20 @@ rec {
 Every verb invocation acquires an exclusive `flock` on `${vault}/.lsmw.lock` and blocks until released — concurrent calls on the same vault serialise, never race.
 
 ```{.nix file=lib/init.nix as-a-real-non-nix-store-file="init module imported by the bootstrap"}
-      mkVerb = name: spec: pkgs.writeShellApplication ({ inherit name; } // spec);
-      notesmdVerb = name: upstream: mkVerb name {
+      name = "lsmw";
+      lockPath = vault: "$${vault}/.${name}.lock";
+      mkVerb = verb: spec: pkgs.writeShellApplication ({ name = "${name}-${verb}"; } // spec);
+      notesmdVerb = verb: upstream: mkVerb verb {
         runtimeInputs = [ pkgs.util-linux ];
         text = ''
-          bin=$(command -v notesmd || command -v obsidian-cli) || {
-            echo "${name} requires notesmd-cli on PATH (go install github.com/Yakitrak/notesmd-cli@latest)" >&2
-            exit 1
-          }
+          bin=$(command -v notesmd || command -v obsidian-cli) || exit 1
           vault=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          exec flock "$vault/.lsmw.lock" "$bin" ${upstream} "$@"
+          exec flock "${lockPath "vault"}" "$bin" ${upstream} "$@"
         '';
       };
-      mvVerb = notesmdVerb "lsmw-mv" "move";
-      rmVerb = notesmdVerb "lsmw-rm" "delete";
-      todoVerb = mkVerb "lsmw-todo" {
+      mvVerb = notesmdVerb "mv" "move";
+      rmVerb = notesmdVerb "rm" "delete";
+      todoVerb = mkVerb "todo" {
         runtimeInputs = [ pkgs.util-linux pkgs.yq-go pkgs.ripgrep pkgs.coreutils ];
         text = ''
           vault=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
@@ -186,41 +186,39 @@ Every verb invocation acquires an exclusive `flock` on `${vault}/.lsmw.lock` and
                 fi
                 printf '\n- [[%s]]\n' "$title" >> "$file"
                 yq -i --front-matter=process ".referenced_in = ((.referenced_in // []) + [\"[[$stem]]\"] | unique)" "$task_file"
-              ) 200>"$vault/.lsmw.lock" ;;
+              ) 200>"${lockPath "vault"}" ;;
             *)
               bin=$(command -v mtn || command -v tn)
-              exec flock "$vault/.lsmw.lock" "$bin" "$@" ;;
+              exec flock "${lockPath "vault"}" "$bin" "$@" ;;
           esac
         '';
       };
-      createVerb = mkVerb "lsmw-create" {
+      createVerb = mkVerb "create" {
         runtimeInputs = [ pkgs.coreutils ];
         text = ''
           path="$1"
           mkdir -p "$(dirname "$path")"
-          [ -e "$path" ] && { echo "$path exists" >&2; exit 1; }
+          [ -e "$path" ] && exit 1
           stem=''${path##*/}; stem=''${stem%.lit.md}; stem=''${stem%.md}
           printf -- '---\ntitle: "%s"\n---\n\n# %s\n\n' "$stem" "$stem" > "$path"
         '';
       };
-      writeVerb = mkVerb "lsmw-write" {
-        runtimeInputs = [ pkgs.coreutils pkgs.ripgrep ];
+      writeVerb = mkVerb "write" {
+        runtimeInputs = [ pkgs.coreutils pkgs.ripgrep pkgs.findutils ];
         text = ''
           file="$1"
-          [ -e "$file" ] || { echo "lsmw write: file not found: $file" >&2; exit 1; }
-          echo ">>> editing $file — use [[wikilinks]] for cross-refs; lsmw will validate them on save."
+          [ -e "$file" ] || exit 1
           ''${EDITOR:-nano} "$file"
           vault=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           unresolved=0
           while read -r link; do
             [ -z "$link" ] && continue
             base=''${link##*/}
-            if ! { rg -lF --no-ignore --hidden "$base" "$vault" --glob '*.md' 2>/dev/null || true; } | grep -q .; then
-              echo "warn: [[$link]] does not resolve — create it with: lsmw create $link.lit.md" >&2
+            if [ -z "$(find "$vault" -type f \( -name "$base.md" -o -name "$base.lit.md" -o -name "$base.lit.mdx" -o -name "$base.mdx" \) -print -quit 2>/dev/null)" ]; then
+              echo "warn: [[$link]] unresolved" >&2
               unresolved=$((unresolved+1))
             fi
           done < <(rg -oN '\[\[([^]|#]+)' --replace '$1' "$file" 2>/dev/null || true)
-          [ "$unresolved" -gt 0 ] && echo "saved with $unresolved unresolved wikilink(s)" >&2
           exit 0
         '';
       };
@@ -228,7 +226,7 @@ Every verb invocation acquires an exclusive `flock` on `${vault}/.lsmw.lock` and
 
 ## The CLI dispatcher
 
-`cli` is the user-facing entry point on `PATH`. It dispatches subcommands to the helpers above. `build` invokes `nix build` against the consumer's flake; `mv` (alias `rename`) forwards two arguments to `lsmw-mv`; `rm` forwards one argument to `lsmw-rm`. Everything else prints usage and exits non-zero.
+`cli` is the user-facing entry point on `PATH`. Dispatches subcommands to the verbs above; unknown verb → usage + exit 1.
 
 ```{.nix file=lib/init.nix as-a-real-non-nix-store-file="init module imported by the bootstrap"}
       cli = pkgs.writeShellScriptBin "literate-state-machine-wiki" ''
@@ -259,24 +257,7 @@ Every verb invocation acquires an exclusive `flock` on `${vault}/.lsmw.lock` and
             shift
             exec ${writeVerb}/bin/lsmw-write "$@"
             ;;
-          *)
-            echo "literate-state-machine-wiki — opinionated literate build tool"
-            echo ""
-            echo "Usage:"
-            echo "  literate-state-machine-wiki build [flake-ref]"
-            echo "  literate-state-machine-wiki mv <src> <dst>"
-            echo "  literate-state-machine-wiki rename <src> <dst>"
-            echo "  literate-state-machine-wiki rm <path>"
-            echo "  literate-state-machine-wiki create <path>"
-            echo "  literate-state-machine-wiki write <file>      (open \$EDITOR; validates [[wikilinks]] on save)"
-            echo "  literate-state-machine-wiki todo <args...>     (forwards to mtn; falls back to tn)"
-            echo ""
-            echo "todo examples:"
-            echo "  literate-state-machine-wiki todo create '<text>'             (forwarded to mtn — creates standalone task file)"
-            echo "  literate-state-machine-wiki todo list --json                 (forwarded to mtn)"
-            echo "  literate-state-machine-wiki todo inline <file> '<title>'    (appends '- [[<title>]]' to <file>; auto-creates TaskNotes/<slug>.md if title not found)"
-            exit 1
-            ;;
+          *) exit 1 ;;
         esac
       '';
     in {
@@ -324,7 +305,7 @@ Consumers use `makeVerify` (which returns packages); the library itself needs to
 `lsmw mv`/`rm` correctness is owned upstream by [notesmd-cli](https://github.com/Yakitrak/notesmd-cli); we don't ship a fixture check that re-tests it — would duplicate upstream work and pin notesmd-cli's behaviour to a snapshot we'd have to maintain. `lsmw todo inline`'s bidirectional-link primitive is lsmw-owned (not in any upstream), so it DOES need fixture tests — see [[tests/todo-verb]].
 
 ```{.nix file=lib/init.nix as-a-real-non-nix-store-file="init module imported by the bootstrap"}
-  mkChecks = { pkgs, tangled, pipeline, checksLib, init, todoVerb, src }:
+  mkChecks = { pkgs, tangled, pipeline, checksLib, init, todoVerb, writeVerb, src }:
     let
       prefixed = prefix: lib.mapAttrs' (name: value:
         lib.nameValuePair "${prefix}-${name}" value);
@@ -336,7 +317,7 @@ Consumers use `makeVerify` (which returns packages); the library itself needs to
         inherit pkgs lib checksLib;
       };
       todoVerbTests = import "${tangled}/tests/todo-verb.nix" {
-        inherit pkgs lib todoVerb;
+        inherit pkgs lib todoVerb writeVerb;
       };
     in {
       tangle-idempotent = checksLib.checkIdempotent { inherit src pkgs; };

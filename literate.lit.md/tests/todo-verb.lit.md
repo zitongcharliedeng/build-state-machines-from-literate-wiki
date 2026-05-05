@@ -1,21 +1,17 @@
 ---
-title: Todo Verb Tests — End-to-End
-description: Fixture-based tests for `lsmw todo inline` — bidirectional `referenced_in:` primitive and path-form wikilink collision safety
-tags: [tests, todo, lsmw, fixture]
+title: Verb Tests — End-to-End
+description: Fixture-based tests for `lsmw todo inline` (bidirectional `referenced_in:` primitive, path-form wikilink collision safety) and `lsmw write` (wikilink validation)
+tags: [tests, lsmw, fixture]
 ---
 
-# Todo Verb Tests — End-to-End
+# Verb Tests — End-to-End
 
-`lsmw todo inline <file> '<title>'` closes a real upstream gap. notesmd-cli writes only standalone task files; mtn (mdbase-tasknotes) likewise creates task-per-file with no notion of where the task is referenced from. An agent reading a task file in either ecosystem cannot tell which vault files inline it without an O(N) grep over the whole vault. The wrapper's primitive — append the bullet `- [[<title>]]` AND record the target's path-form wikilink in the task's `referenced_in:` frontmatter, both under a single flock — turns that O(N) lookup into an O(1) frontmatter read.
+`lsmw todo inline` closes a real upstream gap: notesmd-cli and mtn both write standalone task files with no notion of where the task is referenced from. The wrapper appends `- [[<title>]]` to a target file AND records the target's path-form wikilink in the task's `referenced_in:` frontmatter, both under a single flock — turning O(N) backlink lookup into O(1) frontmatter read. `lsmw write` opens `$EDITOR` then validates `[[wikilinks]]` post-save, warning on unresolved targets.
 
-Three behaviours have to hold together for the primitive to be honest. The bullet must land. The back-reference must land. Reruns must dedupe. Each is one test below; each is its own derivation that exists or doesn't, and the build is the test runner.
-
-## Test fixture builder
-
-`mkVaultTest` writes a tiny vault, runs a command against it, and asserts. The vault gets an empty `git init` because the wrapper resolves vault root via `git rev-parse --show-toplevel`; without a repo the lock file would land in `pwd` and the assertions still hold but the realism would be off. Fixture files are passed as a Nix attrset of `path → content`; the body of each file is heredoc-piped at build time.
+`mkVaultTest` writes a tiny vault, runs a command, asserts. `git init` makes the wrapper's `git rev-parse --show-toplevel` resolve to the fixture root.
 
 ```{.nix file=tests/todo-verb.nix}
-{ pkgs, lib, todoVerb }:
+{ pkgs, lib, todoVerb, writeVerb }:
 let
   mkVaultTest = { name, files, run, assertions }:
     pkgs.runCommand "todo-verb-${name}" {
@@ -36,9 +32,9 @@ __LSMW_EOF__
 in {
 ```
 
-## Test 1 — the bullet lands in the target file
+## Test 1 — bullet lands in target
 
-The most basic guarantee: `lsmw todo inline note.md "Do this daily"` writes `- [[Do this daily]]` to `note.md`. If this fails the wrapper isn't doing what its name promises, regardless of whatever frontmatter side-effects are working.
+Basic guarantee: `lsmw todo inline note.md "Do this daily"` writes `- [[Do this daily]]` to `note.md`.
 
 ```{.nix file=tests/todo-verb.nix}
   inline-creates-bullet = mkVaultTest {
@@ -55,9 +51,9 @@ The most basic guarantee: `lsmw todo inline note.md "Do this daily"` writes `- [
   };
 ```
 
-## Test 2 — the bidirectional link primitive lands
+## Test 2 — bidirectional link primitive lands
 
-The whole reason this verb exists. After `inline note.md "Do this daily"`, the task file `Do this daily.md` must contain a `referenced_in:` frontmatter list whose value is the path-form wikilink `[[note]]`. An agent reading the task can now answer "where am I inlined?" without scanning the vault.
+After `inline`, the task file's `referenced_in:` contains the target's path-form wikilink `[[note]]`. Agent reading the task answers "where am I inlined?" in O(1).
 
 ```{.nix file=tests/todo-verb.nix}
   inline-writes-referenced-in = mkVaultTest {
@@ -76,9 +72,9 @@ The whole reason this verb exists. After `inline note.md "Do this daily"`, the t
   };
 ```
 
-## Test 3 — reruns are idempotent
+## Test 3 — reruns dedupe
 
-Inlining the same task into the same file twice must leave exactly one `referenced_in:` entry, not two. yq's `unique` is the dedup mechanism; this test is the only thing that proves the dedup is wired up correctly. Without it, every rerun would silently bloat the task file's frontmatter.
+Inlining the same task into the same file twice leaves exactly one `referenced_in:` entry. yq's `unique` is the dedup mechanism.
 
 ```{.nix file=tests/todo-verb.nix}
   inline-deduplicates-on-rerun = mkVaultTest {
@@ -99,9 +95,9 @@ Inlining the same task into the same file twice must leave exactly one `referenc
   };
 ```
 
-## Test 4 — basename collisions resolve via path-form
+## Test 4 — basename collisions use path-form
 
-Two files at `projects/foo.md` and `archive/foo.md` share basename `foo`. Obsidian's `[[foo]]` resolves ambiguously; the wrapper must store the path-form `[[projects/foo]]` and `[[archive/foo]]` instead. Without this, the back-reference would point to whichever file Obsidian picks "closest" — non-deterministic at read time, and lossy on rename.
+Two files at `projects/foo.md` and `archive/foo.md` share basename. Wrapper stores path-form `[[projects/foo]]` and `[[archive/foo]]` so back-references stay unambiguous and rename-safe.
 
 ```{.nix file=tests/todo-verb.nix}
   inline-uses-path-form-on-collision = mkVaultTest {
@@ -122,7 +118,19 @@ Two files at `projects/foo.md` and `archive/foo.md` share basename `foo`. Obsidi
         || { echo FAIL: archive/foo missing; cat "Do this daily.md"; exit 1; }
     '';
   };
+
+  write-warns-unresolved-wikilinks = mkVaultTest {
+    name = "write-warns-unresolved-wikilinks";
+    files = {
+      "note.md" = "# Note\n\n[[real]] and [[missing]]\n";
+      "real.md" = "# Real\n";
+    };
+    run = ''EDITOR=true ${writeVerb}/bin/lsmw-write note.md 2> stderr.log || true'';
+    assertions = ''
+      grep -q "missing" stderr.log || { echo FAIL: no warn for unresolved [[missing]]; cat stderr.log; exit 1; }
+    '';
+  };
 }
 ```
 
-A failed assertion aborts the build with the captured file content. `mkChecks` mounts these via `prefixed "todo" todoVerbTests` so they run alongside integration and water-model tests under one `nix flake check`.
+`mkChecks` mounts these via `prefixed "todo" todoVerbTests`; failed assertions abort the build with captured fixture content.

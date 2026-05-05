@@ -75,6 +75,7 @@ TOML
         checks.${system} = initModule.mkChecks {
           inherit pkgs tangled pipeline checksLib init;
           todoVerb = lsmwOutputs.packages.${system}.todoVerb;
+          writeVerb = lsmwOutputs.packages.${system}.writeVerb;
           src = ./.;
         };
 
