@@ -198,14 +198,17 @@ Every verb invocation acquires an exclusive `flock` on `${vault}/.lsmw.lock` and
         runtimeInputs = [ pkgs.coreutils ];
         text = ''
           path="$1"
-          mkdir -p "$(dirname "$path")"
+          vault=$(git rev-parse --show-toplevel 2>/dev/null) || { echo "${name}: not in a git repo (vault detection failed)" >&2; exit 1; }
+          abs=$(realpath -m "$path")
+          case "$abs" in "$vault"/*) ;; *) echo "${name}: path '$path' resolves outside vault '$vault'" >&2; exit 1 ;; esac
           [ -e "$path" ] && exit 1
+          mkdir -p "$(dirname "$path")"
           stem=''${path##*/}; stem=''${stem%.lit.md}; stem=''${stem%.md}
           printf -- '---\ntitle: "%s"\n---\n\n# %s\n\n' "$stem" "$stem" > "$path"
         '';
       };
       writeVerb = mkVerb "write" {
-        runtimeInputs = [ pkgs.coreutils pkgs.ripgrep pkgs.findutils ];
+        runtimeInputs = [ pkgs.coreutils pkgs.ripgrep pkgs.findutils pkgs.gawk ];
         text = ''
           file="$1"
           [ -e "$file" ] || exit 1
@@ -219,7 +222,7 @@ Every verb invocation acquires an exclusive `flock` on `${vault}/.lsmw.lock` and
               echo "warn: [[$link]] unresolved" >&2
               unresolved=$((unresolved+1))
             fi
-          done < <(rg -oN '\[\[([^]|#]+)' --replace '$1' "$file" 2>/dev/null || true)
+          done < <(awk '/^```/{f=!f;next} !f' "$file" | rg -oN '\[\[([^]|#]+)' --replace '$1' 2>/dev/null || true)
           exit 0
         '';
       };
