@@ -143,7 +143,9 @@ rec {
 `lsmw mv`, `lsmw rm`, and `lsmw todo` are the consumer API. Two upstream tools sit behind them:
 
 1. **mv / rm** — backed by [notesmd-cli](https://github.com/Yakitrak/notesmd-cli) (Yakitrak's headless Go binary; renamed from "obsidian-cli" because Obsidian Inc shipped an OFFICIAL desktop-required `obsidian-cli`). Either upstream name resolves: the wrapper prefers `notesmd` (post-rename), falls back to `obsidian-cli` (pre-rename installs).
-2. **todo** — backed by `mtn` (mdbase-tasknotes, headless — operates on markdown via mdbase, NLP via bundled tasknotes-nlp-core, **no Obsidian required**); falls back to `tn` (tasknotes-cli, HTTP-API — requires Obsidian running with the plugin's API enabled). The wrapper prefers `mtn` so the headless path is the default; `tn` is only used when Obsidian is already open and you want live sync. **Inline tasknotes** — bullets pointing to a TaskNote via `[[wikilink]]` (e.g. `- [[Do this daily]]`) — have no upstream CLI primitive (mtn only writes standalone task files), so `lsmw todo inline <file> '<title>'` owns that compose step directly: it appends `- [[<title>]]` to the target file under the same flock. Standalone task creation and inline-reference creation thus stay separate concerns; consumers compose them when they want both.
+2. **todo** — backed by `mtn` (mdbase-tasknotes, headless — operates on markdown via mdbase, NLP via bundled tasknotes-nlp-core, **no Obsidian required**); falls back to `tn` (tasknotes-cli, HTTP-API — requires Obsidian running with the plugin's API enabled). The wrapper prefers `mtn` so the headless path is the default; `tn` is only used when Obsidian is already open and you want live sync.
+
+**Inline tasknotes are bidirectional primitives.** A bullet `- [[Do this daily]]` in any vault file points to the standalone TaskNote `Do this daily.md` — but absent extra metadata, an agent reading the task file cannot tell where it was inlined without scanning the whole vault (O(N) per task). That's a real gap in upstream TaskNotes. `lsmw todo inline <file> '<title>'` closes it by maintaining the link from BOTH sides under one flock: it appends `- [[<title>]]` to `<file>` AND appends `<file>` to the task file's `referenced_in:` frontmatter list (created if absent, deduplicated if already present). An agent reading the task file thereafter sees its inline-reference sites in O(1) without grepping. Origin tracking is a primitive of the lsmw API, not a search.
 
 Consumers don't see which binary handled the call. Every verb invocation acquires an exclusive `flock` on `${vault}/.lsmw.lock` and **blocks** until released — concurrent `lsmw mv`/`lsmw rm`/`lsmw todo` calls on the same vault serialise, never race.
 
@@ -164,29 +166,25 @@ Consumers don't see which binary handled the call. Every verb invocation acquire
       rmVerb = lsmwVerb "lsmw-rm" "delete";
       todoVerb = pkgs.writeShellApplication {
         name = "lsmw-todo";
-        runtimeInputs = [ pkgs.util-linux ];
+        runtimeInputs = [ pkgs.util-linux pkgs.yq-go pkgs.ripgrep ];
         text = ''
           vault=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           case "''${1:-}" in
             inline)
-              # Inline tasknote = a bullet point referencing a TaskNote via [[wikilink]].
-              # mtn has no inline command (it only creates standalone task files), so this
-              # is a compose-step the wrapper owns directly: append "- [[<title>]]" to a
-              # target file. The task file itself must exist (use `lsmw todo create` first).
               shift
-              file="''${1:-}"; shift || true
-              title="$*"
-              if [ -z "$file" ] || [ -z "$title" ]; then
-                echo "usage: lsmw todo inline <file> <title>" >&2
-                exit 1
-              fi
-              flock "$vault/.lsmw.lock" sh -c "printf '\\n- [[%s]]\\n' \"\$1\" >> \"\$2\"" -- "$title" "$file"
+              file="$1"; title="$2"
+              task_file=$(rg -lF "title: \"$title\"" "$vault" --glob '*.md' | head -n1)
+              rel=$(realpath --relative-to="$vault" "$file")
+              (
+                flock 200
+                printf '\n- [[%s]]\n' "$title" >> "$file"
+                yq -i --front-matter=process \
+                  ".referenced_in = ((.referenced_in // []) + [\"$rel\"] | unique)" \
+                  "$task_file"
+              ) 200>"$vault/.lsmw.lock"
               ;;
             *)
-              bin=$(command -v mtn || command -v tn) || {
-                echo "lsmw-todo requires mtn (npm install -g mdbase-tasknotes) on PATH (preferred, headless), or tn (npm install -g tasknotes-cli) for live Obsidian-API mode" >&2
-                exit 1
-              }
+              bin=$(command -v mtn || command -v tn)
               exec flock "$vault/.lsmw.lock" "$bin" "$@"
               ;;
           esac
