@@ -94,8 +94,6 @@ let
     '';
 
 in {
-  # ── Minimal success path ────────────────────────────────────────────
-  # Proves the base pipeline works: pre-check → tangle → package output.
   minimal = assertBuilds {
     name = "minimal";
     fixture = mkFixture {
@@ -104,8 +102,6 @@ in {
     };
   };
 
-  # ── postTangle hook in success path ─────────────────────────────────
-  # A passing hook runs, writes a marker, and we assert it appears.
   post-tangle-success = assertHookRan {
     name = "post-tangle-success";
     fixture = mkFixture {
@@ -119,8 +115,6 @@ in {
     marker = "hook-ran";
   };
 
-  # ── Warn-mode hook failure does NOT abort build ─────────────────────
-  # A hook with mode = "warn" that fails must still produce a built package.
   post-tangle-warn-mode = assertBuilds {
     name = "post-tangle-warn-mode";
     fixture = mkFixture {
@@ -141,8 +135,6 @@ in {
     expectFile = "hook-marker";
   };
 
-  # ── Warn-mode failure PROPAGATES to dependents ──────────────────────
-  # A warn-mode hook that fails is recorded as "passed" in the water model
   # ($_lsmw_passed += name), so dependents CAN still run. Warn mode means
   # "non-fatal" — the pipeline continues, and downstream hooks proceed.
   # Contrast with error mode, which does NOT add to passed, causing
@@ -169,8 +161,6 @@ in {
     markerFile = "warn-propagate-marker";
   };
 
-  # ── Needs in sequence when all pass ─────────────────────────────────
-  # Hooks with needs must run in declared order, and all markers appear.
   needs-success-chain = pkgs.runCommand "needs-success-chain" { } ''
     fixture=${mkFixture {
       name = "needs-success-chain";
@@ -192,7 +182,6 @@ in {
     touch "$out"
   '';
 
-  # ── until filter runs target + its transitive deps (3 levels deep) ──
   # Hooks: a → b → c (chain), plus d → e (unrelated branch). until = "c"
   # must run {a, b, c} and skip {d, e}. This proves transitive resolution
   # actually walks the full chain, not just direct deps.
