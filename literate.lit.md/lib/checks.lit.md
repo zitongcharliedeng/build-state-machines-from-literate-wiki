@@ -20,7 +20,7 @@ rec {
 
 ## Pre-tangle checks
 
-Two checks run before Entangled writes output: `literate-structure` rejects code blocks that start with `//`/`/*`/`*/` (explanations belong in prose) and enforces minimum prose density; `input-title-tooltips` rejects `<input title=>` in favor of accessible info-button dialogs.
+Two checks run before Entangled writes output. `literate-structure` walks every `.lit.md`/`.lit.mdx` and enforces eight invariants: (1) code blocks contain no `//`/`/*` comments (explanations belong in prose); (2) blocks ≤ `maxBlockLength` lines (default 50); (3) ≥ `minProseLines` prose lines per file (default 3); (4) prose precedes the first code block; (5) `as-a-real-non-nix-store-file=` annotations warn (these are bootstrap escapes); (6) `file=` paths are relative, not absolute; (7) optional `enforceDirectoryMatch` rejects `file=` paths that don't match the source dir; (8) no `.md`/`.mdx` files outside the literate convention. `input-title-tooltips` rejects `<input title=>` in favor of accessible info-button dialogs.
 
 ```{.nix file=lib/checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
   mkDefaultPreTangleChecks = {
