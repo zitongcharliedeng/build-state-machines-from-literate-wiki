@@ -57,13 +57,13 @@ The caller's `shellHook` appends after all three layers, so consumer-specific me
         build() { nix build --no-link --print-out-paths "$@"; }
         export -f build
         ${envExports}
-        echo "[literate-state-machine-wiki] entangled: $(entangled --version 2>/dev/null || echo 'NOT FOUND')"
+        echo "[${config.name}] entangled: $(entangled --version 2>/dev/null || echo 'NOT FOUND')"
         ${lib.optionalString (tangleCommand != null) ''
           if ${autoTangleCondition}; then
-            echo "[literate-state-machine-wiki] Auto-tangling literate source..."
+            echo "[${config.name}] Auto-tangling literate source..."
             ${tangleCommand}
           else
-            echo "[literate-state-machine-wiki] No literate source matched configured globs"
+            echo "[${config.name}] No literate source matched configured globs"
           fi
         ''}
         ${shellHook}
