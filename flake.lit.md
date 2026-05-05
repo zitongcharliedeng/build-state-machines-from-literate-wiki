@@ -175,26 +175,43 @@ Consumers don't see which binary handled the call. Every verb invocation acquire
         runtimeInputs = [ pkgs.util-linux pkgs.yq-go pkgs.ripgrep pkgs.coreutils ];
         text = ''
           vault=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          slugify() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed 's/^-//;s/-$//'; }
           case "''${1:-}" in
             inline)
-              shift
-              file="$1"; title="$2"
+              shift; file="$1"; title="$2"
               task_file=$( { rg -lF --no-ignore --hidden "title: \"$title\"" "$vault" --glob '*.md' 2>/dev/null || true; } | head -n1)
-              rel=$(realpath --relative-to="$vault" "$file")
-              stem=''${rel%.*}
-              (
-                flock 200
+              rel=$(realpath --relative-to="$vault" "$file"); stem=''${rel%.lit.md}; stem=''${stem%.lit.mdx}; stem=''${stem%.md}; stem=''${stem%.mdx}
+              ( flock 200
                 printf '\n- [[%s]]\n' "$title" >> "$file"
-                yq -i --front-matter=process \
-                  ".referenced_in = ((.referenced_in // []) + [\"[[$stem]]\"] | unique)" \
-                  "$task_file"
-              ) 200>"$vault/.lsmw.lock"
-              ;;
+                yq -i --front-matter=process ".referenced_in = ((.referenced_in // []) + [\"[[$stem]]\"] | unique)" "$task_file"
+              ) 200>"$vault/.lsmw.lock" ;;
+            append)
+              shift; file="$1"; text="$2"; slug=$(slugify "$text")
+              task_file="$vault/TaskNotes/$slug.md"
+              ( flock 200
+                if [ ! -e "$task_file" ]; then
+                  mkdir -p "$(dirname "$task_file")"
+                  printf -- '---\ntitle: "%s"\nstatus: open\ncreated: %s\n---\n\n# %s\n' "$text" "$(date -I)" "$text" > "$task_file"
+                fi
+                rel=$(realpath --relative-to="$vault" "$file"); stem=''${rel%.lit.md}; stem=''${stem%.lit.mdx}; stem=''${stem%.md}; stem=''${stem%.mdx}
+                printf '\n- [[%s]]\n' "$text" >> "$file"
+                yq -i --front-matter=process ".referenced_in = ((.referenced_in // []) + [\"[[$stem]]\"] | unique)" "$task_file"
+              ) 200>"$vault/.lsmw.lock" ;;
             *)
               bin=$(command -v mtn || command -v tn)
-              exec flock "$vault/.lsmw.lock" "$bin" "$@"
-              ;;
+              exec flock "$vault/.lsmw.lock" "$bin" "$@" ;;
           esac
+        '';
+      };
+      createVerb = pkgs.writeShellApplication {
+        name = "lsmw-create";
+        runtimeInputs = [ pkgs.coreutils ];
+        text = ''
+          path="$1"
+          mkdir -p "$(dirname "$path")"
+          [ -e "$path" ] && { echo "$path exists" >&2; exit 1; }
+          stem=''${path##*/}; stem=''${stem%.lit.md}; stem=''${stem%.md}
+          printf -- '---\ntitle: "%s"\n---\n\n# %s\n\n' "$stem" "$stem" > "$path"
         '';
       };
 ```
@@ -224,6 +241,10 @@ Consumers don't see which binary handled the call. Every verb invocation acquire
             shift
             exec ${todoVerb}/bin/lsmw-todo "$@"
             ;;
+          create)
+            shift
+            exec ${createVerb}/bin/lsmw-create "$@"
+            ;;
           *)
             echo "literate-state-machine-wiki — opinionated literate build tool"
             echo ""
@@ -232,12 +253,14 @@ Consumers don't see which binary handled the call. Every verb invocation acquire
             echo "  literate-state-machine-wiki mv <src> <dst>"
             echo "  literate-state-machine-wiki rename <src> <dst>"
             echo "  literate-state-machine-wiki rm <path>"
+            echo "  literate-state-machine-wiki create <path>"
             echo "  literate-state-machine-wiki todo <args...>     (forwards to mtn; falls back to tn)"
             echo ""
             echo "todo examples:"
-            echo "  literate-state-machine-wiki todo create '<text>'         (forwarded to mtn — creates standalone task file)"
-            echo "  literate-state-machine-wiki todo list --json             (forwarded to mtn)"
-            echo "  literate-state-machine-wiki todo inline <file> '<title>' (appends '- [[<title>]]' to <file>; task file must exist)"
+            echo "  literate-state-machine-wiki todo create '<text>'             (forwarded to mtn — creates standalone task file)"
+            echo "  literate-state-machine-wiki todo list --json                 (forwarded to mtn)"
+            echo "  literate-state-machine-wiki todo inline <file> '<title>'    (appends '- [[<title>]]' to <file>; task file must exist)"
+            echo "  literate-state-machine-wiki todo append <file> '<text>'     (creates TaskNotes/<slug>.md AND appends '- [[<text>]]' to <file>)"
             exit 1
             ;;
         esac
@@ -248,7 +271,7 @@ Consumers don't see which binary handled the call. Every verb invocation acquire
         literate-verified = verified.default;
         tangled = verified.tangled;
         web-wiki = pipeline.buildWebWiki { inherit pkgs src; litSourceDir = sourceDir; };
-        inherit cli mvVerb rmVerb todoVerb;
+        inherit cli mvVerb rmVerb todoVerb createVerb;
       };
       devShells.${system}.default = devshellLib.mkDevShell {
         inherit pkgs;
