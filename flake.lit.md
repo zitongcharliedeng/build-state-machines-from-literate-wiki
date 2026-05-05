@@ -177,7 +177,7 @@ Consumers don't see which binary handled the call. Every verb invocation acquire
             inline)
               shift
               file="$1"; title="$2"
-              task_file=$(rg -lF --no-ignore --hidden "title: \"$title\"" "$vault" --glob '*.md' 2>/dev/null | head -n1)
+              task_file=$( { rg -lF --no-ignore --hidden "title: \"$title\"" "$vault" --glob '*.md' 2>/dev/null || true; } | head -n1)
               rel=$(realpath --relative-to="$vault" "$file")
               stem=''${rel%.*}
               (
