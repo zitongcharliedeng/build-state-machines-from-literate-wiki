@@ -390,7 +390,6 @@ These pure functions operate on the `postTangle` hook list. They are extracted t
 **`filterUntil`** — the public entry point used by `until = "hookname"`. When `until == null`, returns the full hook list unchanged. When set, asserts the target hook exists (clear error if not), resolves its transitive closure, and filters the original list to that closure while preserving declaration order.
 
 ```{.nix file=lib/checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
-  # Throws on forward reference or missing hook. Returns true on success.
   validateNeeds = hooks:
     let
       go = seen: remaining:
@@ -403,7 +402,6 @@ These pure functions operate on the `postTangle` hook list. They are extracted t
         else go (seen ++ [h.name]) rest;
     in go [] hooks;
 
-  # hooksByName: attrset {hookname = hook;}. Uses visited accumulator to handle cycles.
   resolveClosure = { hooksByName, name, visited ? [] }:
     if builtins.elem name visited then visited
     else let
