@@ -412,7 +412,6 @@ These pure functions operate on the `postTangle` hook list. They are extracted t
       withSelf = visited ++ [name];
     in builtins.foldl' (acc: n: resolveClosure { inherit hooksByName; name = n; visited = acc; }) withSelf needs;
 
-  # Preserves declaration order within the closure.
   filterUntil = { postTangle, until }:
     if until == null then postTangle else
     let
