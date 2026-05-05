@@ -59,13 +59,14 @@ TOML
         inherit lib pkgs config pipeline checksLib devshellLib;
       };
       inherit (initModule) init tangleAndRead;
-    in
-      (init {
+      lsmwOutputs = init {
         inherit pkgs;
         src = ./.;
         sourceDir = "literate.lit.md";
         ignoreLiterateGitSubmodules = true;
-      }) // {
+      };
+    in
+      lsmwOutputs // {
         lib = {
           inherit init tangleAndRead;
           inherit (config) defaultEntangledToml;
@@ -73,6 +74,7 @@ TOML
 
         checks.${system} = initModule.mkChecks {
           inherit pkgs tangled pipeline checksLib init;
+          todoVerb = lsmwOutputs.packages.${system}.todoVerb;
           src = ./.;
         };
 

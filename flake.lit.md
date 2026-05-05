@@ -88,13 +88,14 @@ After the IFD-tangle, every `.nix` under `lib/` is in the store. The bootstrap i
         inherit lib pkgs config pipeline checksLib devshellLib;
       };
       inherit (initModule) init tangleAndRead;
-    in
-      (init {
+      lsmwOutputs = init {
         inherit pkgs;
         src = ./.;
         sourceDir = "literate.lit.md";
         ignoreLiterateGitSubmodules = true;
-      }) // {
+      };
+    in
+      lsmwOutputs // {
         lib = {
           inherit init tangleAndRead;
           inherit (config) defaultEntangledToml;
@@ -102,6 +103,7 @@ After the IFD-tangle, every `.nix` under `lib/` is in the store. The bootstrap i
 
         checks.${system} = initModule.mkChecks {
           inherit pkgs tangled pipeline checksLib init;
+          todoVerb = lsmwOutputs.packages.${system}.todoVerb;
           src = ./.;
         };
 
@@ -280,10 +282,10 @@ TOML
 
 Consumers use `makeVerify` (which returns packages); the library itself needs to expose `checks.*` for `nix flake check`. `mkChecks` wires the internal test suite (`tangle-idempotent`, `tangle-immutable`, `unit-tests`, integration tests, water-model tests) into a single attrset under `checks.${system}`. The bootstrap calls it once.
 
-`lsmw mv`/`rm` correctness is owned upstream by [obsidian-cli](https://github.com/Yakitrak/notesmd-cli); we don't ship a fixture check that re-tests it — would duplicate upstream work and pin obsidian-cli's behavior to a snapshot we'd have to maintain.
+`lsmw mv`/`rm` correctness is owned upstream by [notesmd-cli](https://github.com/Yakitrak/notesmd-cli); we don't ship a fixture check that re-tests it — would duplicate upstream work and pin notesmd-cli's behaviour to a snapshot we'd have to maintain. `lsmw todo inline`'s bidirectional-link primitive is lsmw-owned (not in any upstream), so it DOES need fixture tests — see [[tests/todo-verb]].
 
 ```{.nix file=lib/init.nix as-a-real-non-nix-store-file="init module imported by the bootstrap"}
-  mkChecks = { pkgs, tangled, pipeline, checksLib, init, src }:
+  mkChecks = { pkgs, tangled, pipeline, checksLib, init, todoVerb, src }:
     let
       prefixed = prefix: lib.mapAttrs' (name: value:
         lib.nameValuePair "${prefix}-${name}" value);
@@ -294,6 +296,9 @@ Consumers use `makeVerify` (which returns packages); the library itself needs to
       waterModelTests = import "${tangled}/tests/water-model.nix" {
         inherit pkgs lib checksLib;
       };
+      todoVerbTests = import "${tangled}/tests/todo-verb.nix" {
+        inherit pkgs lib todoVerb;
+      };
     in {
       tangle-idempotent = checksLib.checkIdempotent { inherit src pkgs; };
       tangle-immutable = checksLib.checkImmutable {
@@ -303,6 +308,7 @@ Consumers use `makeVerify` (which returns packages); the library itself needs to
       unit-tests = import "${tangled}/tests/unit-check.nix" { inherit pkgs lib checksLib; };
     }
     // prefixed "integration" integrationTests
-    // prefixed "water-model" waterModelTests;
+    // prefixed "water-model" waterModelTests
+    // prefixed "todo" todoVerbTests;
 }
 ```
