@@ -56,8 +56,6 @@ The modules, each doing one thing:
 
 `lib.init` composes them into a single call. Consumers never touch the pieces directly.
 
-<!-- TODO: the nix that builds this library also needs this library (bootstrap paradox). Currently bootstrapped with `entangled tangle --force` then `nix flake check`. -->
-
 ## The store output IS the product
 
 The full project tree — literate source, tangled code, and any artifacts produced by postTangle hooks — lives in the nix store after `literate-state-machine-wiki build`. Nothing is filtered out. The literate `.lit.md` files are documentation, readable prose, and can serve as static assets. The tangled code is the executable output. Whatever the consumer's hooks produce belongs in the store too.
