@@ -1,1 +1,1 @@
-literate.lit.mdx/index.lit.mdx
+literate.lit.md/index.lit.md
