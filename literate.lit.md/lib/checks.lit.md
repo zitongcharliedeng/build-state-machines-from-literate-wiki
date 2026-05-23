@@ -24,7 +24,7 @@ Two checks run before Entangled writes output. `literate-structure` walks every 
 
 ```{.nix file=lib/checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
   mkDefaultPreTangleChecks = {
-    sourceDir ? "literate",
+    sourceDir ? ".english.lit.md",
     tooltipCheckFile ? "literate/index.lit.md",
     enforceDirectoryMatch ? false,
     minProseLines ? 3,
@@ -342,7 +342,7 @@ Each check in `preTangleChecks` / `postTangleChecks` gets its own named derivati
 ```{.nix file=lib/checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
   makeChecks = {
     src, pkgs,
-    sourceDir ? "literate.lit.md",
+    sourceDir ? ".english.lit.md",
     tooltipCheckFile ? null,
     enforceDirectoryMatch ? false,
     stripGeneratedMarkers ? true,
@@ -352,7 +352,7 @@ Each check in `preTangleChecks` / `postTangleChecks` gets its own named derivati
     let
       allPreChecks = (mkDefaultPreTangleChecks { inherit sourceDir tooltipCheckFile enforceDirectoryMatch; }) ++ preTangleChecks;
       allPostChecks = mkDefaultPostTangleChecks ++ postTangleChecks;
-      tangled = pipeline.tangle { inherit src pkgs stripGeneratedMarkers; };
+      tangled = pipeline.tangle { inherit src pkgs sourceDir stripGeneratedMarkers; };
     in {
       tangle-and-check = pkgs.runCommand "${config.name}-tangle-and-check" {
         nativeBuildInputs =
@@ -361,9 +361,9 @@ Each check in `preTangleChecks` / `postTangleChecks` gets its own named derivati
           ++ collectNativeBuildInputs allPostChecks;
       } ''
         set -euo pipefail
-        ${pipeline.projectSetup { inherit src; }}
+        ${pipeline.projectSetup { inherit src sourceDir; }}
         ${renderChecks "pre" allPreChecks}
-        ${pipeline.tangleProject { inherit stripGeneratedMarkers; }}
+        ${pipeline.tangleProject { inherit sourceDir stripGeneratedMarkers; }}
         ${renderChecks "post" allPostChecks}
         touch "$out"
       '';
@@ -438,7 +438,7 @@ Five stages, four gates:
 ```{.nix file=lib/checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
   makeVerify = {
     src, pkgs,
-    sourceDir ? "literate.lit.md",
+    sourceDir ? ".english.lit.md",
     tooltipCheckFile ? null,
     enforceDirectoryMatch ? false,
     stripGeneratedMarkers ? true,
@@ -473,7 +473,7 @@ Five stages, four gates:
         cat > entangled.toml <<'TOML'
 ${config.defaultEntangledToml}
 TOML
-        ${pipeline.tangleProject { inherit stripGeneratedMarkers; }}
+        ${pipeline.tangleProject { inherit sourceDir stripGeneratedMarkers; }}
       '';
 
       _needsValid = validateNeeds postTangle;

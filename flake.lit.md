@@ -99,14 +99,14 @@ After the IFD-tangle, every `.nix` under `lib/` is in the store. The bootstrap i
         lib = {
           inherit init tangleAndRead;
           inherit (config) defaultEntangledToml;
-          minimalFlake = { src, sourceDir ? "literate.lit.md", pkgs ? nixpkgs.legacyPackages.${system} }:
+          minimalFlake = { src, sourceDir ? ".english.lit.md", pkgs ? nixpkgs.legacyPackages.${system} }:
             init { inherit pkgs src sourceDir; ignoreLiterateGitSubmodules = true; };
         };
 
         templates.default = { path = ./templates/minimal; description = "${config.name} minimal consumer"; };
 
         checks.${system} = initModule.mkChecks {
-          inherit pkgs tangled pipeline checksLib init;
+          inherit pkgs tangled pipeline checksLib init tangleAndRead;
           todoVerb = lsmwOutputs.packages.${system}.todoVerb;
           writeVerb = lsmwOutputs.packages.${system}.writeVerb;
           src = ./.;
@@ -134,7 +134,7 @@ rec {
     system ? "x86_64-linux",
     postTangle ? [ ],
     until ? null,
-    sourceDir ? "literate.lit.md",
+    sourceDir ? ".english.lit.md",
     enforceDirectoryMatch ? false,
     ignoreLiterateGitSubmodules
   }:
@@ -280,7 +280,7 @@ Every verb invocation acquires an exclusive `flock` on `${vault}/.lsmw.lock` and
 Some consumers need a tangled file at evaluation time — a `package.json` derived from `package.lit.md` to feed `importNpmLock` or `bun2nix`, for example. `tangleAndRead` runs entangled inside a fixed-output-style derivation, then reads one specific file from the result. Gridinstruments uses this to drive its npm lockfile pipeline without committing JSON.
 
 ```{.nix file=lib/init.nix as-a-real-non-nix-store-file="init module imported by the bootstrap"}
-  tangleAndRead = { pkgs, src, file }: builtins.readFile "${
+  tangleAndRead = { pkgs, src, file, sourceDir ? ".english.lit.md" }: builtins.readFile "${
     pkgs.runCommand "tangle-for-eval" {
       nativeBuildInputs = [ (config.entangledFor pkgs) (config.pythonFor pkgs) ];
     } ''
@@ -290,10 +290,11 @@ Some consumers need a tangled file at evaluation time — a `package.json` deriv
       cat > entangled.toml <<'TOML'
 ${config.defaultEntangledToml}
 TOML
+      ${pipeline.expandLocalFileTargets { inherit sourceDir; }}
       entangled tangle --force 2>/dev/null
       ${pipeline.stripEntangledMarkers}
-      mkdir -p $out
-      cp ${file} $out/ 2>/dev/null || (echo "ERROR: ${file} not found after tangle" && exit 1)
+      mkdir -p $out/$(dirname ${lib.escapeShellArg file})
+      cp ${file} $out/${file} 2>/dev/null || (echo "ERROR: ${file} not found after tangle" && exit 1)
     ''
   }/${file}";
 ```
@@ -305,12 +306,12 @@ Consumers use `makeVerify` (which returns packages); the library itself needs to
 `lsmw mv`/`rm` correctness is owned upstream by [notesmd-cli](https://github.com/Yakitrak/notesmd-cli); we don't ship a fixture check that re-tests it — would duplicate upstream work and pin notesmd-cli's behaviour to a snapshot we'd have to maintain. `lsmw todo inline`'s bidirectional-link primitive is lsmw-owned (not in any upstream), so it DOES need fixture tests — see [[tests/todo-verb]].
 
 ```{.nix file=lib/init.nix as-a-real-non-nix-store-file="init module imported by the bootstrap"}
-  mkChecks = { pkgs, tangled, pipeline, checksLib, init, todoVerb, writeVerb, src }:
+  mkChecks = { pkgs, tangled, pipeline, checksLib, init, tangleAndRead, todoVerb, writeVerb, src }:
     let
       prefixed = prefix: lib.mapAttrs' (name: value:
         lib.nameValuePair "${prefix}-${name}" value);
       integrationTests = import "${tangled}/tests/integration.nix" {
-        inherit pkgs lib;
+        inherit pkgs lib tangleAndRead;
         lsmwInit = init;
       };
       waterModelTests = import "${tangled}/tests/water-model.nix" {

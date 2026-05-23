@@ -27,8 +27,6 @@ A consumer adds literate-state-machine-wiki as a flake input, calls `lib.init`, 
       literate-state-machine-wiki.lib.init {
         inherit pkgs;
         src = ./.;
-        sourceDir = "literate.lit.md";
-
         linters = [
           {
             name = "typecheck";

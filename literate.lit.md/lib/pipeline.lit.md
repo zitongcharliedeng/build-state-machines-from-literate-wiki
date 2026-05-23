@@ -14,10 +14,72 @@ This module copies sources into a build sandbox, runs Entangled, strips generate
 { lib, config }:
 rec {
 ```
-## projectSetup
-`projectSetup` copies the source tree into `build/`, writes `entangled.toml` (so the consumer never needs one), and deletes `.entangled/filedb.json` so Entangled cannot skip outputs by trusting a stale database.
+## expandLocalFileTargets
+`file=.suffix` means "use this literate file's owner name, then append `.suffix`". For example, inside `foo.english.lit.md`, `file=.ts` expands to `foo.english.ts`; inside `foo.english.lit.md`, `file=.machine.ts` expands to `foo.english.machine.ts`.
 ```{.nix file=lib/pipeline.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
-  projectSetup = { src }: ''
+  expandLocalFileTargets = { sourceDir ? ".english.lit.md", only ? "" }: ''
+    LSMW_SOURCE_DIR=${lib.escapeShellArg sourceDir} LSMW_ONLY=${lib.escapeShellArg only} python3 - <<'PY'
+import os, re
+source_dir = os.environ["LSMW_SOURCE_DIR"].strip("/")
+only = os.environ["LSMW_ONLY"]
+
+def lit_files():
+    if only:
+        return [only]
+    found = []
+    for root, _, files in os.walk(source_dir if os.path.isdir(source_dir) else "."):
+        for name in files:
+            if name.endswith((".lit.md", ".lit.mdx")):
+                found.append(os.path.join(root, name))
+    return found
+
+def strip_lit_suffix(path):
+    for suffix in (".lit.md", ".lit.mdx"):
+        if path.endswith(suffix):
+            return path[:-len(suffix)]
+    return path
+
+def expand(path, target):
+    rel = path[2:] if path.startswith("./") else path
+    local = rel[len(source_dir) + 1:] if rel.startswith(source_dir + "/") else rel
+    owner = strip_lit_suffix(local)
+    owner_dir = os.path.dirname(owner)
+    if target.startswith("."):
+        return os.path.join(owner_dir, os.path.basename(owner) + target)
+    if "/" not in target:
+        return os.path.join(owner_dir, target)
+    return target
+
+def language_for(target):
+    ext = target.rsplit(".", 1)[-1]
+    return {"ts": "ts", "tsx": "tsx", "js": "js", "jsx": "jsx", "nix": "nix", "json": "json", "sh": "sh", "bash": "sh", "md": "md", "toml": "toml"}.get(ext, ext)
+
+def rewrite_line(path, match):
+    open_, attrs, close = match.group(1), match.group(2), match.group(3)
+    file_match = re.search(r'\bfile=([^ }\n]+)', attrs)
+    if not file_match:
+        return match.group(0)
+    expanded = expand(path, file_match.group(1))
+    attrs = attrs[:file_match.start(1)] + expanded + attrs[file_match.end(1):]
+    if not re.search(r'(^|\s)\.[A-Za-z0-9_+-]+(\s|$)', attrs):
+        attrs = "." + language_for(expanded) + " " + attrs.lstrip()
+    return open_ + attrs + close
+
+pattern = re.compile(r'(^```\{)([^}\n]*\bfile=[^}\n]*)(\})', re.MULTILINE)
+for path in lit_files():
+    with open(path, encoding="utf-8") as handle:
+        text = handle.read()
+    changed = pattern.sub(lambda m: rewrite_line(path, m), text)
+    if changed != text:
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(changed)
+PY
+  '';
+```
+## projectSetup
+`projectSetup` copies the source tree into `build/`, writes `entangled.toml` (so the consumer never needs one), expands local `file=.` targets, and deletes `.entangled/filedb.json` so Entangled cannot skip outputs by trusting a stale database.
+```{.nix file=lib/pipeline.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+  projectSetup = { src, sourceDir ? ".english.lit.md" }: ''
     mkdir -p build
     cp -r ${src}/. build/
     chmod -R u+w build
@@ -27,6 +89,7 @@ rec {
     ${config.defaultEntangledToml}
     TOML
 
+    ${expandLocalFileTargets { inherit sourceDir; }}
     rm -f .entangled/filedb.json
   '';
 ```
@@ -53,7 +116,8 @@ Removes `~~ ` prefix comments that Entangled writes into generated files, skippi
 ## tangleProject
 Runs `entangled tangle --force` (required in a nix sandbox — no interactive terminal), then optionally strips markers.
 ```{.nix file=lib/pipeline.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
-  tangleProject = { stripGeneratedMarkers ? true }: ''
+  tangleProject = { stripGeneratedMarkers ? true, sourceDir ? ".english.lit.md" }: ''
+    ${expandLocalFileTargets { inherit sourceDir; }}
     entangled tangle --force
     ${lib.optionalString stripGeneratedMarkers stripEntangledMarkers}
   '';
@@ -94,14 +158,15 @@ Composes `projectSetup`, `tangleProject`, and `installTargets` into a `pkgs.runC
     src,
     name ? "tangled",
     pkgs,
-    stripGeneratedMarkers ? true
+    stripGeneratedMarkers ? true,
+    sourceDir ? ".english.lit.md"
   }:
     pkgs.runCommand name {
       nativeBuildInputs = [ (config.entangledFor pkgs) (config.pythonFor pkgs) ];
     } ''
       set -euo pipefail
-      ${projectSetup { inherit src; }}
-      ${tangleProject { inherit stripGeneratedMarkers; }}
+      ${projectSetup { inherit src sourceDir; }}
+      ${tangleProject { inherit stripGeneratedMarkers sourceDir; }}
       ${installTargets}
     '';
 ```
@@ -150,7 +215,6 @@ Isolation is load-bearing: the derivation input is the **single file** read via 
       };
       watchEntry = "${sourceDir}/${relPath}";
       dirRelPath = builtins.dirOf relPath;
-      mirrorPrefix = if dirRelPath == "." then "" else "${dirRelPath}/";
     in
     pkgs.runCommand safeName {
       nativeBuildInputs = [ (config.entangledFor pkgs) (config.pythonFor pkgs) ];
@@ -162,27 +226,7 @@ Isolation is load-bearing: the derivation input is the **single file** read via 
       chmod -R u+w build
       cd build
 
-      ${lib.optionalString (mirrorPrefix != "") ''
-        python3 - << 'PYEOF'
-        import re, sys
-        path = "${watchEntry}"
-        prefix = "${mirrorPrefix}"
-        with open(path) as f:
-            text = f.read()
-        warnings = []
-        def fix(m):
-            head, val, tail = m.group(1), m.group(2), m.group(3)
-            if "/" in val:
-                warnings.append(val)
-                return m.group(0)
-            return f"{head}{prefix}{val}{tail}"
-        text = re.sub(r'(^```\{[^}]*file=)([^ }]+)([ }])', fix, text, flags=re.MULTILINE)
-        with open(path, "w") as f:
-            f.write(text)
-        for w in warnings:
-            sys.stderr.write(f"warn: file={w} has slashes; LSMW auto-mirrors source dir from bare basenames — drop the prefix\n")
-        PYEOF
-      ''}
+      ${expandLocalFileTargets { inherit sourceDir; only = watchEntry; }}
 
       cat > entangled.toml << 'TOML'
       version = "2.0"
@@ -233,7 +277,7 @@ Produces a deployable directory from literate sources, resolving `[[wiki links]]
     src,
     pkgs,
     name ? "${config.name}-docs",
-    litSourceDir ? "literate.lit.md"
+    litSourceDir ? ".english.lit.md"
   }:
     pkgs.runCommand name {
       nativeBuildInputs = [ pkgs.python3 ];

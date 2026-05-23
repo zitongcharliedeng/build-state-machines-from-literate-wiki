@@ -38,7 +38,7 @@ The caller's `shellHook` appends after all three layers, so consumer-specific me
     basePackages ? [ (config.nodejsFor pkgs) (config.pythonFor pkgs) ],
     extraPackages ? [ ],
     env ? { },
-    sourceGlobs ? [ "literate.lit.md/*.lit.md" "literate.lit.md/**/*.lit.md" "literate.lit.md/*.lit.mdx" "literate.lit.md/**/*.lit.mdx" ],
+    sourceGlobs ? [ ".english.lit.md/*.lit.md" ".english.lit.md/**/*.lit.md" ".english.lit.md/*.lit.mdx" ".english.lit.md/**/*.lit.mdx" ],
     tangleCommand ? null,
     shellHook ? ""
   }:

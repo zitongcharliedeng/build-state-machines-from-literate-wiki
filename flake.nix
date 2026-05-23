@@ -75,14 +75,14 @@ TOML
         lib = {
           inherit init tangleAndRead;
           inherit (config) defaultEntangledToml;
-          minimalFlake = { src, sourceDir ? "literate.lit.md", pkgs ? nixpkgs.legacyPackages.${system} }:
+          minimalFlake = { src, sourceDir ? ".english.lit.md", pkgs ? nixpkgs.legacyPackages.${system} }:
             init { inherit pkgs src sourceDir; ignoreLiterateGitSubmodules = true; };
         };
 
         templates.default = { path = ./templates/minimal; description = "${config.name} minimal consumer"; };
 
         checks.${system} = initModule.mkChecks {
-          inherit pkgs tangled pipeline checksLib init;
+          inherit pkgs tangled pipeline checksLib init tangleAndRead;
           todoVerb = lsmwOutputs.packages.${system}.todoVerb;
           writeVerb = lsmwOutputs.packages.${system}.writeVerb;
           src = ./.;

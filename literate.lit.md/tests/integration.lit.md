@@ -12,10 +12,10 @@ The fixtures here cover transitions visible from outside the pipeline: success p
 
 ## Fixture builder
 
-`mkFixture` writes a minimal `literate.lit.md/hello.lit.md` to a tree, then runs `lib.init` with the fixture's `postTangle` hooks. We can't call `lib.init` from inside another derivation's build phase (IFD-within-IFD), so the fixture tree is built in one derivation and passed at eval time. `assertBuilds` and `assertHookRan` are the two assertion shapes — file present, or file present with marker content.
+`mkFixture` writes a minimal `.english.lit.md/hello.lit.md` to a tree, then runs `lib.init` with the fixture's `postTangle` hooks. We can't call `lib.init` from inside another derivation's build phase (IFD-within-IFD), so the fixture tree is built in one derivation and passed at eval time. `assertBuilds` and `assertHookRan` are the two assertion shapes — file present, or file present with marker content.
 
 ```{.nix file=tests/integration.nix}
-{ pkgs, lib, lsmwInit }:
+{ pkgs, lib, lsmwInit, tangleAndRead }:
 let
   minimalLit = ''
     ---
@@ -34,21 +34,32 @@ let
     ```
   '';
 
-  mkFixtureTree = { name, litContent }:
+  mkFixtureTree = { name, litContent, litFile ? "hello.lit.md" }:
     pkgs.runCommand "fixture-${name}-tree" { } ''
-      mkdir -p $out/literate.lit.md
-      cat > $out/literate.lit.md/hello.lit.md <<'LIT_EOF'
+      mkdir -p $out/.english.lit.md/$(dirname ${lib.escapeShellArg litFile})
+      cat > $out/.english.lit.md/${litFile} <<'LIT_EOF'
       ${litContent}
       LIT_EOF
     '';
 
-  mkFixture = { name, litContent, postTangle ? [], until ? null }:
+  localDotTargetLit = ''
+    Dot-local targets inherit the literate owner filename.
+
+    This fixture uses the default English literate filename form.
+
+    The target `file=.ts` should produce `machine.english.ts`.
+
+    ```{file=.ts}
+    export const localDotTarget = "ok";
+    ```
+  '';
+
+  mkFixture = { name, litContent, litFile ? "hello.lit.md", postTangle ? [], until ? null }:
     let
-      tree = mkFixtureTree { inherit name litContent; };
+      tree = mkFixtureTree { inherit name litContent litFile; };
       outputs = lsmwInit {
         inherit pkgs postTangle until;
         src = tree;
-        sourceDir = "literate.lit.md";
         ignoreLiterateGitSubmodules = true;
       };
     in outputs.packages.${pkgs.stdenv.hostPlatform.system}.default;
@@ -83,6 +94,44 @@ A literate fixture with one tangle target builds and produces the expected file.
     name = "minimal";
     fixture = mkFixture { name = "minimal"; litContent = minimalLit; };
   };
+```
+
+## local-dot-target — owner filename is inherited
+
+A source file named `machine.english.lit.md` can use `file=.ts`. LSMW expands the target to `machine.english.ts` and infers the TypeScript fence language before Entangled runs.
+
+```{.nix file=tests/integration.nix}
+  local-dot-target = assertBuilds {
+    name = "local-dot-target";
+    fixture = mkFixture {
+      name = "local-dot-target";
+      litContent = localDotTargetLit;
+      litFile = "machine.english.lit.md";
+    };
+    expectFile = "machine.english.ts";
+  };
+```
+
+## tangle-and-read-local-dot-target — eval-time reader uses the same rule
+
+`tangleAndRead` is the eval-time consumer API. It must apply the same local-dot target expansion as the build pipeline.
+
+```{.nix file=tests/integration.nix}
+  tangle-and-read-local-dot-target =
+    let
+      tree = mkFixtureTree {
+        name = "tangle-and-read-local-dot-target";
+        litContent = localDotTargetLit;
+        litFile = "machine.english.lit.md";
+      };
+      content = tangleAndRead { inherit pkgs; src = tree; file = "machine.english.ts"; };
+    in pkgs.runCommand "tangle-and-read-local-dot-target" { } ''
+      cat > content.ts <<'CONTENT'
+${content}
+CONTENT
+      grep -q 'localDotTarget = "ok"' content.ts
+      touch "$out"
+    '';
 ```
 
 ## post-tangle-success — hook runs, writes marker
