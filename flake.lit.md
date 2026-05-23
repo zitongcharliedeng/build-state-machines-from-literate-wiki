@@ -320,6 +320,9 @@ Consumers use `makeVerify` (which returns packages); the library itself needs to
       todoVerbTests = import "${tangled}/tests/todo-verb.nix" {
         inherit pkgs lib todoVerb writeVerb;
       };
+      claimCheckTests = import "${tangled}/tests/claim-checks.nix" {
+        inherit pkgs lib checksLib;
+      };
     in {
       tangle-idempotent = checksLib.checkIdempotent { inherit src pkgs; };
       tangle-immutable = checksLib.checkImmutable {
@@ -330,6 +333,7 @@ Consumers use `makeVerify` (which returns packages); the library itself needs to
     }
     // prefixed "integration" integrationTests
     // prefixed "water-model" waterModelTests
-    // prefixed "todo" todoVerbTests;
+    // prefixed "todo" todoVerbTests
+    // prefixed "claim" claimCheckTests;
 }
 ```

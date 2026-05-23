@@ -23,6 +23,89 @@ rec {
 Two checks run before Entangled writes output. `literate-structure` walks every `.lit.md`/`.lit.mdx` and enforces eight invariants: (1) code blocks contain no `//`/`/*` comments (explanations belong in prose); (2) blocks ≤ `maxBlockLength` lines (default 50); (3) ≥ `minProseLines` prose lines per file (default 3); (4) prose precedes the first code block; (5) `as-a-real-non-nix-store-file=` annotations warn (these are bootstrap escapes); (6) `file=` paths are relative, not absolute; (7) optional `enforceDirectoryMatch` rejects `file=` paths that don't match the source dir; (8) no `.md`/`.mdx` files outside the literate convention. `input-title-tooltips` rejects `<input title=>` in favor of accessible info-button dialogs.
 
 ```{.nix file=lib/checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+  mkClaimChecks = {
+    sourceDir ? ".english.lit.md"
+  }:
+    [{
+      name = "claim-atoms";
+      command = ''
+        python3 - <<'CLAIMCHECK'
+import os, re, sys
+
+source_dir = ${builtins.toJSON sourceDir}
+allowed_kinds = {"claim", "invariant", "transition", "machine", "rule", "tbc-rule"}
+allowed_claim_types = {"raw", "supporting", "existence", "invariant", "transition", "machine-shaping"}
+errors = 0
+
+def frontmatter(text):
+    if not text.startswith("---\n"):
+        return None
+    end = text.find("\n---", 4)
+    if end == -1:
+        return None
+    return text[4:end]
+
+def parse_lsmw(fm):
+    data = {}
+    in_lsmw = False
+    for raw in fm.splitlines():
+        line = raw.rstrip()
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        if re.match(r"^lsmw:\s*$", line):
+            in_lsmw = True
+            continue
+        if in_lsmw:
+            if not line.startswith(" "):
+                in_lsmw = False
+            else:
+                m = re.match(r"^\s+([A-Za-z][A-Za-z0-9_-]*):\s*(.*?)\s*$", line)
+                if m:
+                    value = m.group(2).strip().strip('"').strip("'")
+                    data[m.group(1)] = value
+    return data
+
+machines_root = os.path.join(source_dir, "machines")
+if os.path.isdir(machines_root):
+    for root, dirs, files in os.walk(machines_root):
+        dirs[:] = [d for d in dirs if d != ".git"]
+        for name in files:
+            if not (name.endswith(".lit.md") or name.endswith(".lit.mdx")):
+                continue
+            path = os.path.join(root, name)
+            with open(path, encoding="utf-8") as handle:
+                text = handle.read()
+            fm = frontmatter(text)
+            rel = os.path.relpath(path, source_dir)
+            if fm is None:
+                print(f"  error claim/missing-frontmatter: {rel}")
+                print("    machine atoms under machines/ need YAML frontmatter with lsmw.kind")
+                errors += 1
+                continue
+            lsmw = parse_lsmw(fm)
+            kind = lsmw.get("kind")
+            if not kind:
+                print(f"  error claim/missing-kind: {rel}")
+                print("    missing lsmw.kind")
+                errors += 1
+                continue
+            if kind not in allowed_kinds:
+                print(f"  error claim/unknown-kind: {rel}")
+                print(f"    unknown lsmw.kind '{kind}'")
+                errors += 1
+            claim_type = lsmw.get("claimType")
+            if kind == "claim" and claim_type and claim_type not in allowed_claim_types:
+                print(f"  error claim/unknown-claim-type: {rel}")
+                print(f"    unknown lsmw.claimType '{claim_type}'")
+                errors += 1
+
+if errors:
+    print(f"[${config.name}] {errors} claim atom violation(s)")
+    sys.exit(1)
+CLAIMCHECK
+      '';
+    }];
+
   mkDefaultPreTangleChecks = {
     sourceDir ? ".english.lit.md",
     tooltipCheckFile ? "literate/index.lit.md",
@@ -151,6 +234,7 @@ if errors > 0:
 LITCHECK
         '';
       }]
+      (mkClaimChecks { inherit sourceDir; })
       (lib.optional (tooltipCheckFile != null) {
         name = "input-title-tooltips";
         command = ''
