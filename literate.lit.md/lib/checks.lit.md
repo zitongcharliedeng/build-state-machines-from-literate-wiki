@@ -23,7 +23,8 @@ Two checks run before Entangled writes output. `literate-structure` walks every 
 
 ```{.nix file=lib/checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
   mkClaimChecks = {
-    sourceDir ? ".english.lit.md"
+    sourceDir ? ".english.lit.md",
+    reportOnly ? false
   }:
     [{
       name = "claim-atoms";
@@ -32,6 +33,7 @@ Two checks run before Entangled writes output. `literate-structure` walks every 
 import os, re, sys
 
 source_dir = ${builtins.toJSON sourceDir}
+report_only = ${if reportOnly then "True" else "False"}
 allowed_claim_types = {"Raw", "Machine", "MachineInvariant", "MachineTransition"}
 errors = 0
 
@@ -174,7 +176,10 @@ for rel, field, target in relations:
 
 if errors:
     print(f"[${config.name}] {errors} claim atom violation(s)")
-    sys.exit(1)
+    if report_only:
+        print(f"[${config.name}] reportOnly=true; claim atom violations reported without failing")
+    else:
+        sys.exit(1)
 CLAIMCHECK
       '';
     }];

@@ -56,6 +56,20 @@ LSMW_EOF
       grep -q ${lib.escapeShellArg expected} log || { echo "FAIL: expected diagnostic not found: ${expected}"; cat log; exit 1; }
       touch "$out"
     '';
+
+  runClaimInventory = { name, src, expected }:
+    pkgs.runCommand "claim-inventory-${name}" {
+      nativeBuildInputs = [ pkgs.python3 ];
+    } ''
+      cp -r ${src}/. build
+      chmod -R u+w build
+      cd build
+      (
+        ${checksLib.renderChecksWaterModel "pre" (checksLib.mkClaimChecks { sourceDir = ".english.lit.md"; reportOnly = true; })}
+      ) > log 2>&1
+      grep -q ${lib.escapeShellArg expected} log || { echo "FAIL: expected inventory diagnostic not found: ${expected}"; cat log; exit 1; }
+      touch "$out"
+    '';
 in {
 ```
 
@@ -273,6 +287,29 @@ Machine folders should be canonical path segments such as `machines/voice`, not 
           ---
 
           The directory repeats machine semantics that belong in the machine root path and claims.
+        '';
+      };
+    };
+  };
+```
+
+## report-only-inventory-lists-violations-without-failing
+
+A cleanup pass needs a safe inventory mode before mass migration. `reportOnly = true` should print the same diagnostics but exit successfully so dirty sources such as the NixOS literate system can be surveyed before any enforcement step.
+
+```{.nix file=tests/claim-checks.nix}
+  report-only-inventory-lists-violations-without-failing = runClaimInventory {
+    name = "report-only-inventory-lists-violations-without-failing";
+    expected = "claim/missing-frontmatter";
+    src = mkFixture {
+      name = "report-only-inventory-lists-violations-without-failing";
+      files = {
+        "possible-nixos/literate/apps/hermes-agent.lit.md" = ''
+          ---
+          ---
+
+          This file is intentionally unpromoted source material.
+          It should appear in a report-only inventory before enforcement.
         '';
       };
     };
