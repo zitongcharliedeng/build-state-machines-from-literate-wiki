@@ -1,5 +1,4 @@
 ---
-title: literate-state-machine-wiki — bootstrap + consumer API
 description: The single source of truth for the LSMW flake. Tangles to flake.nix at the project root and lib/init.nix inside the tangle output, so the bootstrap stub and the public init contract never drift from each other.
 tags: [lsmw, flake, bootstrap, init, api]
 ---

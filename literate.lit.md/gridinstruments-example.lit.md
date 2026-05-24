@@ -1,5 +1,4 @@
 ---
-title: GridInstruments Example
 description: How gridinstruments consumes literate-state-machine-wiki — before/after of adopting this flake
 tags: [example, consumer, gridinstruments]
 ---

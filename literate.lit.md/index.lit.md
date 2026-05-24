@@ -1,5 +1,4 @@
 ---
-title: Literate State Machine Wiki
 description: My opinionated build tool — tangles literate sources into verified code for every project I write
 tags: [root, map-of-content]
 ---

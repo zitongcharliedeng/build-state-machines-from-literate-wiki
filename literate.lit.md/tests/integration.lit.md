@@ -1,5 +1,4 @@
 ---
-title: Integration Tests — End-to-End Pipeline
 description: Fixture-based integration tests that build tiny literate projects and assert expected outputs
 tags: [tests, integration, nix, fixtures]
 ---
@@ -19,7 +18,6 @@ The fixtures here cover transitions visible from outside the pipeline: success p
 let
   minimalLit = ''
     ---
-    title: Hello
     description: minimal fixture for integration tests
     tags: [test]
     lsmw:
@@ -46,7 +44,6 @@ let
 
   localDotTargetLit = ''
     ---
-    title: Dot-local target fixture
     lsmw:
       claimType: Raw
     ---

@@ -1,5 +1,4 @@
 ---
-title: Water Model Shell-Level Tests
 description: Direct tests of the renderChecksWaterModel shell script — error-mode abort, dep-failed skip, warn propagation
 tags: [tests, water-model, shell, nix]
 ---

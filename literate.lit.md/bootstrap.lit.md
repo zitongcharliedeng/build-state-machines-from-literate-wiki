@@ -1,5 +1,4 @@
 ---
-title: Bootstrap — Compiler-Style Self-Hosting
 description: How literate-state-machine-wiki bootstraps itself using IFD tangle-at-eval, mirroring GCC's configure-and-make pattern
 tags: [bootstrap, self-hosting, compiler, nix, ifd]
 ---

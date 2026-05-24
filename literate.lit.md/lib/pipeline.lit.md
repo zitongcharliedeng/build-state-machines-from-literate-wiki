@@ -1,5 +1,4 @@
 ---
-title: Nix Pipeline Module
 description: The core tangling pipeline — project setup, marker stripping, tangle execution, nix store installation, and local dev app
 tags: [nix, pipeline, tangle, module]
 ---

@@ -1,5 +1,4 @@
 ---
-title: Unit Tests — DAG Helpers
 description: Pure nix unit tests for validateNeeds, resolveClosure, and filterUntil using nixpkgs.lib.runTests
 tags: [tests, unit, nix, dag]
 ---

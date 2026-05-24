@@ -1,5 +1,4 @@
 ---
-title: Nix Checks Module
 description: All validation logic for literate-state-machine-wiki — pre-tangle checks, post-tangle checks, structural integrity checks, and the makeChecks public API
 tags: [nix, checks, validation, module]
 ---
@@ -67,6 +66,12 @@ def parse_lsmw(fm):
 def markdown_file(name):
     return name.endswith(".md") or name.endswith(".mdx")
 
+type_prefix_re = re.compile(r"^(Claim|Invariant|Global Invariant|Entry Transition|Transition|TBC Rule|Rule|TaskNotes|Existence)\s+-\s+")
+machine_prefix_re = re.compile(r"^(Machine|Proxy Machine)\s+-\s+")
+
+def has_top_level_yaml_key(fm, key):
+    return any(re.match(r"^" + re.escape(key) + r":\s*", line) for line in fm.splitlines())
+
 def parse_lsmw_list(fm, key):
     values = []
     in_lsmw = False
@@ -119,11 +124,24 @@ for root, dirs, files in os.walk(source_dir):
             text = handle.read()
         fm = frontmatter(text)
         rel = os.path.relpath(path, source_dir)
+        for part in rel.split(os.sep)[:-1]:
+            if machine_prefix_re.match(part):
+                print(f"  error claim/machine-prefix-directory: {rel}")
+                print("    remove machine prefix from directory; use machines/<slug> and explicit claim files")
+                errors += 1
         if fm is None:
             print(f"  error claim/missing-frontmatter: {rel}")
             print("    markdown claim atoms need YAML frontmatter with lsmw.claimType")
             errors += 1
             continue
+        if has_top_level_yaml_key(fm, "title"):
+            print(f"  error claim/duplicate-title: {rel}")
+            print("    remove YAML title; filename/prose already names the atom")
+            errors += 1
+        if type_prefix_re.match(name):
+            print(f"  error claim/type-prefix-filename: {rel}")
+            print("    remove type prefix from filename; use lsmw.claimType for semantic type")
+            errors += 1
         lsmw = parse_lsmw(fm)
         if "kind" in lsmw:
             print(f"  error claim/duplicate-kind: {rel}")

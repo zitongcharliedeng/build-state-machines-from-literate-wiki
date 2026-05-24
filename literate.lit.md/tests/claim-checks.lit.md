@@ -1,5 +1,4 @@
 ---
-title: Claim Checks — Stage 0 Atom Validation
 description: Fixture-based tests for Stage 0 LSMW claim/atom validation over frontmatter YAML
 tags: [tests, lsmw, claims, frontmatter, stage-0]
 ---
@@ -70,7 +69,6 @@ A claim atom with YAML `lsmw.claimType = "MachineInvariant"` should validate eve
     files = {
       "machines/voice/high-notes.english.claim.lit.md" = ''
         ---
-        title: High notes require independent mouth parts
         lsmw:
           claimType: MachineInvariant
         ---
@@ -88,13 +86,12 @@ A markdown atom under `.english.lit.md` without `lsmw.claimType` should fail the
 ```{.nix file=tests/claim-checks.nix}
   missing-claim-type-fails = runClaimCheckExpectFailure {
     name = "missing-claim-type-fails";
-    expected = "missing lsmw.claimType";
+    expected = "markdown claim atoms need YAML frontmatter with lsmw.claimType";
     src = mkFixture {
       name = "missing-claim-type-fails";
       files = {
         "machines/voice/high-notes.english.claim.lit.md" = ''
           ---
-          title: High notes require independent mouth parts
           ---
 
           This atom has no encoded LSMW kind, so Stage 0 cannot type-check it.
@@ -117,7 +114,6 @@ A markdown atom under `.english.lit.md` without `lsmw.claimType` should fail the
       files = {
         "machines/voice/high-notes.english.claim.lit.md" = ''
           ---
-          title: High notes require independent mouth parts
           lsmw:
             kind: invariant
             claimType: MachineInvariant
@@ -137,13 +133,12 @@ A markdown atom under `.english.lit.md` without `lsmw.claimType` should fail the
 ```{.nix file=tests/claim-checks.nix}
   all-markdown-needs-claim-type-fails = runClaimCheckExpectFailure {
     name = "all-markdown-needs-claim-type-fails";
-    expected = "missing lsmw.claimType";
+    expected = "markdown claim atoms need YAML frontmatter with lsmw.claimType";
     src = mkFixture {
       name = "all-markdown-needs-claim-type-fails";
       files = {
         "notes/untyped-thought.md" = ''
           ---
-          title: Untyped thought
           ---
 
           This is markdown claim material and must still carry claimType.
@@ -166,7 +161,6 @@ Claim relation fields should be checked: a missing prerequisite claim target is 
       files = {
         "machines/voice/high-notes.english.claim.lit.md" = ''
           ---
-          title: High notes require independent mouth parts
           lsmw:
             claimType: MachineInvariant
             prereqClaims:
@@ -188,9 +182,8 @@ Claim relation fields should be checked: a missing prerequisite claim target is 
   prereq-and-assuming-claims-can-target-any-claim-file = runClaimCheck (mkFixture {
     name = "prereq-and-assuming-claims-can-target-any-claim-file";
     files = {
-      "notes/breath-source.md" = ''
+      "assumptions/breath-source.english.claim.lit.md" = ''
         ---
-        title: Breath source observation
         lsmw:
           claimType: Raw
         ---
@@ -199,18 +192,90 @@ Claim relation fields should be checked: a missing prerequisite claim target is 
       '';
       "machines/voice/high-notes.english.claim.lit.md" = ''
         ---
-        title: High notes require independent mouth parts
         lsmw:
           claimType: MachineInvariant
           prereqClaims:
-            - notes/breath-source.md
+            - assumptions/breath-source.english.claim.lit.md
           assumingClaims:
-            - notes/breath-source.md
+            - assumptions/breath-source.english.claim.lit.md
         ---
 
         The referenced file is not under machines, but it is still a claim file.
       '';
     };
   });
+```
+
+## yaml-title-field-fails
+
+The title is already the human filename/prose heading. Stage 0 should reject duplicated YAML `title` metadata.
+
+```{.nix file=tests/claim-checks.nix}
+  yaml-title-field-fails = runClaimCheckExpectFailure {
+    name = "yaml-title-field-fails";
+    expected = "remove YAML title";
+    src = mkFixture {
+      name = "yaml-title-field-fails";
+      files = {
+        "machines/voice/high-notes.english.claim.lit.md" = ''
+          ---
+          title: High notes require independent mouth parts
+          lsmw:
+            claimType: MachineInvariant
+          ---
+
+          The title field duplicates the filename and should fail.
+        '';
+      };
+    };
+  };
+```
+
+## type-prefix-filename-fails
+
+Claim type belongs in `lsmw.claimType`, not filename prefixes like `Invariant -` or `Claim -`.
+
+```{.nix file=tests/claim-checks.nix}
+  type-prefix-filename-fails = runClaimCheckExpectFailure {
+    name = "type-prefix-filename-fails";
+    expected = "remove type prefix from filename";
+    src = mkFixture {
+      name = "type-prefix-filename-fails";
+      files = {
+        "machines/voice/Invariant - High notes require independent mouth parts.md" = ''
+          ---
+          lsmw:
+            claimType: MachineInvariant
+          ---
+
+          The semantic type is already in lsmw.claimType.
+        '';
+      };
+    };
+  };
+```
+
+## machine-prefix-directory-fails
+
+Machine folders should be canonical path segments such as `machines/voice`, not duplicated `Machine - Voice` labels.
+
+```{.nix file=tests/claim-checks.nix}
+  machine-prefix-directory-fails = runClaimCheckExpectFailure {
+    name = "machine-prefix-directory-fails";
+    expected = "remove machine prefix from directory";
+    src = mkFixture {
+      name = "machine-prefix-directory-fails";
+      files = {
+        "Machine - Voice/high-notes.english.claim.md" = ''
+          ---
+          lsmw:
+            claimType: MachineInvariant
+          ---
+
+          The directory repeats machine semantics that belong in the machine root path and claims.
+        '';
+      };
+    };
+  };
 }
 ```

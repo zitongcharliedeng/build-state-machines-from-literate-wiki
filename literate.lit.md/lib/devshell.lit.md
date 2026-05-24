@@ -1,5 +1,4 @@
 ---
-title: Nix DevShell Module
 description: mkDevShell — the reusable development environment factory that every literate-state-machine-wiki consumer imports
 tags: [nix, devshell, module, mkShell]
 ---

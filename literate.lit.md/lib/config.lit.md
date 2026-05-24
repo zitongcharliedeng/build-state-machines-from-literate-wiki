@@ -1,5 +1,4 @@
 ---
-title: Nix Config Module
 description: Default configuration values extracted from flake.nix — the shared constants every consumer of literate-state-machine-wiki needs
 tags: [nix, config, defaults, module]
 ---

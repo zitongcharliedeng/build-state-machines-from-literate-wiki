@@ -1,5 +1,4 @@
 ---
-title: Self-Hosting Check — Bootstrap Proof
 description: Verifies the committed bootstrap layer (lib/*.nix, flake.nix) matches the tangled output of the literate source bitwise
 tags: [tests, self-host, bootstrap, compiler]
 ---

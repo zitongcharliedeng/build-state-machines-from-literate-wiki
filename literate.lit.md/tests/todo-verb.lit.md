@@ -1,5 +1,4 @@
 ---
-title: Verb Tests — End-to-End
 description: Fixture-based tests for `lsmw todo inline` (bidirectional `referenced_in:` primitive, path-form wikilink collision safety) and `lsmw write` (wikilink validation)
 tags: [tests, lsmw, fixture]
 ---
