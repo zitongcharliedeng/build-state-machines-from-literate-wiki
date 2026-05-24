@@ -33,8 +33,7 @@ Two checks run before Entangled writes output. `literate-structure` walks every 
 import os, re, sys
 
 source_dir = ${builtins.toJSON sourceDir}
-allowed_kinds = {"claim", "invariant", "transition", "machine", "rule", "tbc-rule"}
-allowed_claim_types = {"raw", "supporting", "existence", "invariant", "transition", "machine-shaping"}
+allowed_claim_types = {"Raw", "Machine", "MachineInvariant", "MachineTransition"}
 errors = 0
 
 def frontmatter(text):
@@ -79,22 +78,20 @@ if os.path.isdir(machines_root):
             rel = os.path.relpath(path, source_dir)
             if fm is None:
                 print(f"  error claim/missing-frontmatter: {rel}")
-                print("    machine atoms under machines/ need YAML frontmatter with lsmw.kind")
+                print("    machine atoms under machines/ need YAML frontmatter with lsmw.claimType")
                 errors += 1
                 continue
             lsmw = parse_lsmw(fm)
-            kind = lsmw.get("kind")
-            if not kind:
-                print(f"  error claim/missing-kind: {rel}")
-                print("    missing lsmw.kind")
-                errors += 1
-                continue
-            if kind not in allowed_kinds:
-                print(f"  error claim/unknown-kind: {rel}")
-                print(f"    unknown lsmw.kind '{kind}'")
+            if "kind" in lsmw:
+                print(f"  error claim/duplicate-kind: {rel}")
+                print("    remove lsmw.kind; every markdown atom is already a claim, use lsmw.claimType only")
                 errors += 1
             claim_type = lsmw.get("claimType")
-            if kind == "claim" and claim_type and claim_type not in allowed_claim_types:
+            if not claim_type:
+                print(f"  error claim/missing-claim-type: {rel}")
+                print("    missing lsmw.claimType")
+                errors += 1
+            elif claim_type not in allowed_claim_types:
                 print(f"  error claim/unknown-claim-type: {rel}")
                 print(f"    unknown lsmw.claimType '{claim_type}'")
                 errors += 1

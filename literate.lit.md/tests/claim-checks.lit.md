@@ -8,7 +8,7 @@ tags: [tests, lsmw, claims, frontmatter, stage-0]
 
 Stage 0 validates markdown atoms before XState projections or agents exist.
 
-The DRY encoding rule for this test is: the atom kind lives in YAML frontmatter, not in the filename. A file can be named `anything.english.lit.md`; humans and Obsidian can style/query from frontmatter. The library should not require `Claim - ...` or `Machine - ...` in the path.
+The DRY encoding rule for this test is: every markdown atom is already a claim. The only required semantic discriminator is `lsmw.claimType`, namespaced under `lsmw` so the YAML frontmatter has one LSMW-owned field system. A file can be named `anything.english.claim.lit.md`; humans and Obsidian can style/query from frontmatter. The library should not require `Claim - ...` or `Machine - ...` in the path, and it should reject duplicate schemas like `lsmw.kind`.
 
 This keeps the source API stable while leaving UI readability to projections/plugins/views.
 
@@ -60,21 +60,19 @@ LSMW_EOF
 in {
 ```
 
-## valid-frontmatter-kind-builds
+## valid-frontmatter-claim-type-builds
 
-A claim atom with YAML `lsmw.kind = "claim"` should validate even though the filename does not contain `Claim -`.
+A claim atom with YAML `lsmw.claimType = "MachineInvariant"` should validate even though the filename does not contain `Invariant -`.
 
 ```{.nix file=tests/claim-checks.nix}
-  valid-frontmatter-kind-builds = runClaimCheck (mkFixture {
-    name = "valid-frontmatter-kind-builds";
+  valid-frontmatter-claim-type-builds = runClaimCheck (mkFixture {
+    name = "valid-frontmatter-claim-type-builds";
     files = {
-      "machines/voice/high-notes.english.lit.md" = ''
+      "machines/voice/high-notes.english.claim.lit.md" = ''
         ---
         title: High notes require independent mouth parts
         lsmw:
-          kind: claim
-          claimType: supporting
-          status: raw
+          claimType: MachineInvariant
         ---
 
         This is enough prose to be a living Stage 0 claim atom.
@@ -83,23 +81,49 @@ A claim atom with YAML `lsmw.kind = "claim"` should validate even though the fil
   });
 ```
 
-## missing-kind-fails
+## missing-claim-type-fails
 
-A markdown atom under `.english.lit.md` without `lsmw.kind` should fail the claim check. This makes YAML the encoded source of truth instead of path prefixes.
+A markdown atom under `.english.lit.md` without `lsmw.claimType` should fail the claim check. This makes YAML the encoded source of truth instead of path prefixes.
 
 ```{.nix file=tests/claim-checks.nix}
-  missing-kind-fails = runClaimCheckExpectFailure {
-    name = "missing-kind-fails";
-    expected = "missing lsmw.kind";
+  missing-claim-type-fails = runClaimCheckExpectFailure {
+    name = "missing-claim-type-fails";
+    expected = "missing lsmw.claimType";
     src = mkFixture {
-      name = "missing-kind-fails";
+      name = "missing-claim-type-fails";
       files = {
-        "machines/voice/high-notes.english.lit.md" = ''
+        "machines/voice/high-notes.english.claim.lit.md" = ''
           ---
           title: High notes require independent mouth parts
           ---
 
           This atom has no encoded LSMW kind, so Stage 0 cannot type-check it.
+        '';
+      };
+    };
+  };
+```
+
+## kind-field-fails
+
+`lsmw.kind` is a duplicate type system. Since every markdown atom is already a claim, Stage 0 should reject it.
+
+```{.nix file=tests/claim-checks.nix}
+  kind-field-fails = runClaimCheckExpectFailure {
+    name = "kind-field-fails";
+    expected = "remove lsmw.kind";
+    src = mkFixture {
+      name = "kind-field-fails";
+      files = {
+        "machines/voice/high-notes.english.claim.lit.md" = ''
+          ---
+          title: High notes require independent mouth parts
+          lsmw:
+            kind: invariant
+            claimType: MachineInvariant
+          ---
+
+          The duplicate kind field should fail because claimType is the only Stage 0 discriminator.
         '';
       };
     };
