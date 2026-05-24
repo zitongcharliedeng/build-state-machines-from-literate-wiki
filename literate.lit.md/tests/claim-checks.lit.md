@@ -128,5 +128,89 @@ A markdown atom under `.english.lit.md` without `lsmw.claimType` should fail the
       };
     };
   };
+```
+
+## all-markdown-needs-claim-type-fails
+
+`Raw` only makes sense if Stage 0 can type ordinary markdown claim material too, not only files under `machines/`.
+
+```{.nix file=tests/claim-checks.nix}
+  all-markdown-needs-claim-type-fails = runClaimCheckExpectFailure {
+    name = "all-markdown-needs-claim-type-fails";
+    expected = "missing lsmw.claimType";
+    src = mkFixture {
+      name = "all-markdown-needs-claim-type-fails";
+      files = {
+        "notes/untyped-thought.md" = ''
+          ---
+          title: Untyped thought
+          ---
+
+          This is markdown claim material and must still carry claimType.
+        '';
+      };
+    };
+  };
+```
+
+## missing-prereq-claim-target-fails
+
+Claim relation fields should be checked: a missing prerequisite claim target is a Stage 0 graph error.
+
+```{.nix file=tests/claim-checks.nix}
+  missing-prereq-claim-target-fails = runClaimCheckExpectFailure {
+    name = "missing-prereq-claim-target-fails";
+    expected = "missing prereqClaims target";
+    src = mkFixture {
+      name = "missing-prereq-claim-target-fails";
+      files = {
+        "machines/voice/high-notes.english.claim.lit.md" = ''
+          ---
+          title: High notes require independent mouth parts
+          lsmw:
+            claimType: MachineInvariant
+            prereqClaims:
+              - notes/missing-source.md
+          ---
+
+          This claim depends on a claim file that does not exist.
+        '';
+      };
+    };
+  };
+```
+
+## prereq-and-assuming-claims-can-target-any-claim-file
+
+`prereqClaims` and `assumingClaims` should accept any claim file in the source surface, including `Raw` notes outside `machines/`.
+
+```{.nix file=tests/claim-checks.nix}
+  prereq-and-assuming-claims-can-target-any-claim-file = runClaimCheck (mkFixture {
+    name = "prereq-and-assuming-claims-can-target-any-claim-file";
+    files = {
+      "notes/breath-source.md" = ''
+        ---
+        title: Breath source observation
+        lsmw:
+          claimType: Raw
+        ---
+
+        A raw observation can still be referenced as claim material.
+      '';
+      "machines/voice/high-notes.english.claim.lit.md" = ''
+        ---
+        title: High notes require independent mouth parts
+        lsmw:
+          claimType: MachineInvariant
+          prereqClaims:
+            - notes/breath-source.md
+          assumingClaims:
+            - notes/breath-source.md
+        ---
+
+        The referenced file is not under machines, but it is still a claim file.
+      '';
+    };
+  });
 }
 ```

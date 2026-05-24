@@ -64,37 +64,95 @@ def parse_lsmw(fm):
                     data[m.group(1)] = value
     return data
 
-machines_root = os.path.join(source_dir, "machines")
-if os.path.isdir(machines_root):
-    for root, dirs, files in os.walk(machines_root):
-        dirs[:] = [d for d in dirs if d != ".git"]
-        for name in files:
-            if not (name.endswith(".lit.md") or name.endswith(".lit.mdx")):
+def markdown_file(name):
+    return name.endswith(".md") or name.endswith(".mdx")
+
+def parse_lsmw_list(fm, key):
+    values = []
+    in_lsmw = False
+    in_list = False
+    key_indent = None
+    for raw in fm.splitlines():
+        line = raw.rstrip()
+        if re.match(r"^lsmw:\s*$", line):
+            in_lsmw = True
+            in_list = False
+            key_indent = None
+            continue
+        if in_lsmw and line and not line.startswith(" "):
+            in_lsmw = False
+            in_list = False
+            key_indent = None
+        if not in_lsmw:
+            continue
+        m = re.match(r"^(\s+)" + re.escape(key) + r":\s*(.*?)\s*$", line)
+        if m:
+            key_indent = len(m.group(1))
+            rest = m.group(2).strip()
+            in_list = True
+            if rest.startswith("[") and rest.endswith("]"):
+                body = rest[1:-1].strip()
+                if body:
+                    values.extend([item.strip().strip('"').strip("'") for item in body.split(",") if item.strip()])
+                in_list = False
+            elif rest:
+                values.append(rest.strip('"').strip("'"))
+            continue
+        if in_list:
+            item = re.match(r"^\s+-\s*(.*?)\s*$", line)
+            if item:
+                values.append(item.group(1).strip().strip('"').strip("'"))
                 continue
-            path = os.path.join(root, name)
-            with open(path, encoding="utf-8") as handle:
-                text = handle.read()
-            fm = frontmatter(text)
-            rel = os.path.relpath(path, source_dir)
-            if fm is None:
-                print(f"  error claim/missing-frontmatter: {rel}")
-                print("    machine atoms under machines/ need YAML frontmatter with lsmw.claimType")
-                errors += 1
-                continue
-            lsmw = parse_lsmw(fm)
-            if "kind" in lsmw:
-                print(f"  error claim/duplicate-kind: {rel}")
-                print("    remove lsmw.kind; every markdown atom is already a claim, use lsmw.claimType only")
-                errors += 1
-            claim_type = lsmw.get("claimType")
-            if not claim_type:
-                print(f"  error claim/missing-claim-type: {rel}")
-                print("    missing lsmw.claimType")
-                errors += 1
-            elif claim_type not in allowed_claim_types:
-                print(f"  error claim/unknown-claim-type: {rel}")
-                print(f"    unknown lsmw.claimType '{claim_type}'")
-                errors += 1
+            if line.strip() and (len(line) - len(line.lstrip(" "))) <= key_indent:
+                in_list = False
+    return values
+
+claim_files = {}
+relations = []
+for root, dirs, files in os.walk(source_dir):
+    dirs[:] = [d for d in dirs if d != ".git"]
+    for name in files:
+        if not markdown_file(name):
+            continue
+        path = os.path.join(root, name)
+        with open(path, encoding="utf-8") as handle:
+            text = handle.read()
+        fm = frontmatter(text)
+        rel = os.path.relpath(path, source_dir)
+        if fm is None:
+            print(f"  error claim/missing-frontmatter: {rel}")
+            print("    markdown claim atoms need YAML frontmatter with lsmw.claimType")
+            errors += 1
+            continue
+        lsmw = parse_lsmw(fm)
+        if "kind" in lsmw:
+            print(f"  error claim/duplicate-kind: {rel}")
+            print("    remove lsmw.kind; every markdown atom is already a claim, use lsmw.claimType only")
+            errors += 1
+        claim_type = lsmw.get("claimType")
+        if not claim_type:
+            print(f"  error claim/missing-claim-type: {rel}")
+            print("    missing lsmw.claimType")
+            errors += 1
+        elif claim_type not in allowed_claim_types:
+            print(f"  error claim/unknown-claim-type: {rel}")
+            print(f"    unknown lsmw.claimType '{claim_type}'")
+            errors += 1
+        else:
+            claim_files[rel] = claim_type
+        for field in ("prereqClaims", "assumingClaims"):
+            for target in parse_lsmw_list(fm, field):
+                relations.append((rel, field, target))
+
+for rel, field, target in relations:
+    candidates = []
+    clean_target = os.path.normpath(target.lstrip("/"))
+    candidates.append(clean_target)
+    candidates.append(os.path.normpath(os.path.join(os.path.dirname(rel), target)))
+    if not any(candidate in claim_files for candidate in candidates):
+        print(f"  error claim/missing-{field}-target: {rel}")
+        print(f"    missing {field} target '{target}'")
+        errors += 1
 
 if errors:
     print(f"[${config.name}] {errors} claim atom violation(s)")
