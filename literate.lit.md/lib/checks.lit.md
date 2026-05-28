@@ -160,6 +160,22 @@ for root, dirs, files in os.walk(source_dir):
             errors += 1
         else:
             claim_files[rel] = claim_type
+        if claim_type == "MachineTransition":
+            in_xstate_parts = False
+            for line in text.splitlines():
+                stripped = line.strip()
+                if stripped.startswith("```"):
+                    if not in_xstate_parts and "xstate-parts" in stripped:
+                        in_xstate_parts = True
+                        continue
+                    if in_xstate_parts:
+                        in_xstate_parts = False
+                        continue
+                if in_xstate_parts and re.search(r"\brequires\s*:", line):
+                    print(f"  error claim/transition-requires-field: {rel}")
+                    print("    transition parts must not use requires; use guards for conditional transitions and check invariants over the composed machine")
+                    errors += 1
+                    break
         for field in ("prereqClaims", "assumingClaims"):
             for target in parse_lsmw_list(fm, field):
                 relations.append((rel, field, target))

@@ -293,6 +293,38 @@ Machine folders should be canonical path segments such as `machines/voice`, not 
   };
 ```
 
+## transition-requires-field-fails
+
+A purist transition part owns event/boundary/from/to/effects. It must not attach invariant prerequisites through a `requires:` field; conditional behavior belongs in guards, and invariants are checked over the composed machine.
+
+```{.nix file=tests/claim-checks.nix}
+  transition-requires-field-fails = runClaimCheckExpectFailure {
+    name = "transition-requires-field-fails";
+    expected = "transition parts must not use requires";
+    src = mkFixture {
+      name = "transition-requires-field-fails";
+      files = {
+        "machines/web/user-opens-localhost.english.claim.lit.md" = ''
+          ---
+          lsmw:
+            claimType: MachineTransition
+          ---
+
+          Opening localhost enters the initial Web LifeOS state.
+
+          ```xstate-parts
+          transitionPart({
+            fromBoundary: "machine-start";
+            requires: ["[[public version check is disabled]]"];
+            toStateConfigPattern: ["[[home page]]"];
+          });
+          ```
+        '';
+      };
+    };
+  };
+```
+
 ## report-only-inventory-lists-violations-without-failing
 
 A cleanup pass needs a safe inventory mode before mass migration. `reportOnly = true` should print the same diagnostics but exit successfully so dirty sources such as the NixOS literate system can be surveyed before any enforcement step.
