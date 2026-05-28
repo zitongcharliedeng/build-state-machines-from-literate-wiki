@@ -14,7 +14,7 @@ The fixtures here cover transitions visible from outside the pipeline: success p
 `mkFixture` writes a minimal `.english.lit.md/hello.lit.md` to a tree, then runs `lib.init` with the fixture's `postTangle` hooks. We can't call `lib.init` from inside another derivation's build phase (IFD-within-IFD), so the fixture tree is built in one derivation and passed at eval time. `assertBuilds` and `assertHookRan` are the two assertion shapes — file present, or file present with marker content.
 
 ```{.nix file=tests/integration.nix}
-{ pkgs, lib, lsmwInit, tangleAndRead }:
+{ pkgs, lib, lsmwInit, checksLib, tangleAndRead }:
 let
   minimalLit = ''
     ---
@@ -216,6 +216,34 @@ Hooks `a → b → c` write their names to a single file. The contents must be `
     fi
     echo "PASS: needs ran in order a → b → c"; touch "$out"
   '';
+```
+
+## test-implementation-missing-impl-diagnostic
+
+A consumer should be able to add one LSMW-owned `TEST_IMPLEMENTATION` hook. If the implementation artifact is missing, the build should fail with the smallest useful diagnostic instead of a generic shell error.
+
+```{.nix file=tests/integration.nix}
+  test-implementation-missing-impl-diagnostic =
+    let hook = checksLib.makeTestImplementationHook { impl = "_impl/web-lifeos.js"; };
+    in pkgs.runCommand "test-implementation-missing-impl-diagnostic" { } ''
+      set +e
+      (
+        ${hook.command}
+      ) > log 2>&1
+      status=$?
+      set -e
+      if [ "$status" -eq 0 ]; then
+        echo "FAIL: TEST_IMPLEMENTATION unexpectedly passed without _impl artifact"
+        cat log
+        exit 1
+      fi
+      grep -q "TEST_IMPLEMENTATION: missing _impl _impl/web-lifeos.js" log || {
+        echo "FAIL: expected TEST_IMPLEMENTATION missing _impl diagnostic"
+        cat log
+        exit 1
+      }
+      touch "$out"
+    '';
 ```
 
 ## until-transitive — `until` walks the full chain

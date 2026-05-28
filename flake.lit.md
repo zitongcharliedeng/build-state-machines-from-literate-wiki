@@ -310,7 +310,7 @@ Consumers use `makeVerify` (which returns packages); the library itself needs to
       prefixed = prefix: lib.mapAttrs' (name: value:
         lib.nameValuePair "${prefix}-${name}" value);
       integrationTests = import "${tangled}/tests/integration.nix" {
-        inherit pkgs lib tangleAndRead;
+        inherit pkgs lib checksLib tangleAndRead;
         lsmwInit = init;
       };
       waterModelTests = import "${tangled}/tests/water-model.nix" {
