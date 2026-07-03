@@ -36,7 +36,7 @@ rec {
 
 ## Pre-tangle checks
 
-Two checks run before Entangled writes output. `literate-structure` walks every `.lit.md`/`.lit.mdx` and enforces eight invariants: (1) code blocks contain no `//`/`/*` comments (explanations belong in prose); (2) blocks ≤ `maxBlockLength` lines (default 50); (3) ≥ `minProseLines` prose lines per file (default 3); (4) prose precedes the first code block; (5) `as-a-real-non-nix-store-file=` annotations warn (these are bootstrap escapes); (6) `file=` paths are relative, not absolute; (7) optional `enforceDirectoryMatch` rejects `file=` paths that don't match the source dir; (8) no `.md`/`.mdx` files outside the literate convention. `input-title-tooltips` rejects `<input title=>` in favor of accessible info-button dialogs.
+Three checks run before Entangled writes output. `literate-structure` walks every `.lit.md`/`.lit.mdx` and enforces eight invariants: (1) code blocks contain no `//`/`/*` comments (explanations belong in prose); (2) blocks ≤ `maxBlockLength` lines (default 50); (3) ≥ `minProseLines` prose lines per file (default 3); (4) prose precedes the first code block; (5) `as-a-real-non-nix-store-file=` annotations warn (these are bootstrap escapes); (6) `file=` paths are relative, not absolute; (7) optional `enforceDirectoryMatch` rejects `file=` paths that don't match the source dir; (8) no `.md`/`.mdx` files outside the literate convention. `input-title-tooltips` rejects `<input title=>` in favor of accessible info-button dialogs. `no-root-gitignore` rejects a project-root `.gitignore` (and one inside `sourceDir`) because artifacts belong in the nix store, not in a tree-local ignore list — a tracked `.gitignore` signals the literate discipline has been broken upstream (node_modules/dist/result leaked into the tree). Rare opt-out: `allowRootGitignore = true`.
 
 ```{.nix file=lib/checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
   mkClaimChecks = {
@@ -222,7 +222,8 @@ CLAIMCHECK
     tooltipCheckFile ? "literate/index.lit.md",
     enforceDirectoryMatch ? false,
     minProseLines ? 3,
-    maxBlockLength ? 50
+    maxBlockLength ? 50,
+    allowRootGitignore ? false
   }:
     lib.flatten [
       [{
@@ -352,6 +353,30 @@ LITCHECK
           if grep -q '<input[^>]*title="' ${lib.escapeShellArg tooltipCheckFile} 2>/dev/null; then
             echo "[${config.name}] ERROR: <input> elements with title= tooltips found."
             grep -n '<input[^>]*title="' ${lib.escapeShellArg tooltipCheckFile} | head -10
+            exit 1
+          fi
+        '';
+      })
+      (lib.optional (!allowRootGitignore) {
+        name = "no-root-gitignore";
+        command = ''
+          offenders=""
+          [ -f .gitignore ] && offenders="$offenders .gitignore"
+          [ -f ${lib.escapeShellArg sourceDir}/.gitignore ] && offenders="$offenders ${sourceDir}/.gitignore"
+          if [ -n "$offenders" ]; then
+            echo "[${config.name}] ERROR: .gitignore found in project tree:$offenders"
+            echo ""
+            echo "  Consumer projects should not carry a .gitignore."
+            echo "  Artifacts belong in the nix store, not in an ignore list — a tracked"
+            echo "  .gitignore means the literate discipline has been broken upstream"
+            echo "  (node_modules/dist/result/etc. have leaked into the worktree)."
+            echo ""
+            echo "  Fixes:"
+            echo "    - build with 'nix build --no-link' so 'result' never lands"
+            echo "    - keep node_modules in the nix store"
+            echo "    - for truly local-only excludes, use .git/info/exclude (uncommitted)"
+            echo ""
+            echo "  If you are sure you need one, pass 'allowRootGitignore = true' to init."
             exit 1
           fi
         '';
@@ -542,10 +567,11 @@ Each check in `preTangleChecks` / `postTangleChecks` gets its own named derivati
     enforceDirectoryMatch ? false,
     stripGeneratedMarkers ? true,
     preTangleChecks ? [ ],
-    postTangleChecks ? [ ]
+    postTangleChecks ? [ ],
+    allowRootGitignore ? false
   }:
     let
-      allPreChecks = (mkDefaultPreTangleChecks { inherit sourceDir tooltipCheckFile enforceDirectoryMatch; }) ++ preTangleChecks;
+      allPreChecks = (mkDefaultPreTangleChecks { inherit sourceDir tooltipCheckFile enforceDirectoryMatch allowRootGitignore; }) ++ preTangleChecks;
       allPostChecks = mkDefaultPostTangleChecks ++ postTangleChecks;
       tangled = pipeline.tangle { inherit src pkgs sourceDir stripGeneratedMarkers; };
     in {
@@ -638,11 +664,12 @@ Five stages, four gates:
     enforceDirectoryMatch ? false,
     stripGeneratedMarkers ? true,
     postTangle ? [],
-    until ? null
+    until ? null,
+    allowRootGitignore ? false
   }:
     let
       allPreChecks = mkDefaultPreTangleChecks {
-        inherit sourceDir tooltipCheckFile enforceDirectoryMatch;
+        inherit sourceDir tooltipCheckFile enforceDirectoryMatch allowRootGitignore;
       };
 
       preChecked = pkgs.runCommand "literate-pre-checked" {

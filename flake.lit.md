@@ -135,11 +135,12 @@ rec {
     until ? null,
     sourceDir ? ".english.lit.md",
     enforceDirectoryMatch ? false,
+    allowRootGitignore ? false,
     ignoreLiterateGitSubmodules
   }:
     let
       verified = checksLib.makeVerify {
-        inherit pkgs src sourceDir enforceDirectoryMatch;
+        inherit pkgs src sourceDir enforceDirectoryMatch allowRootGitignore;
         inherit postTangle until;
       };
 ```
