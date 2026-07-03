@@ -124,7 +124,7 @@ After the IFD-tangle, every `.nix` under `lib/` is in the store. The bootstrap i
 
 The `ignoreLiterateGitSubmodules` parameter is mandatory — no default. The flag declares what happens when LSMW finds nested git repositories (registered submodules or any directory containing `.git`) inside `src`. `true` means nested repos are foreign LSMW projects whose `.lit.md` files belong to those projects; LSMW will not tangle them here. `false` means the consumer accepts responsibility for resolving the tangling collisions and ownership questions that arise when one LSMW project literates over another. Making it required prevents the silent default that conflates two genuinely different intents.
 
-```{.nix file=lib/init.nix as-a-real-non-nix-store-file="init module imported by the bootstrap"}
+```{.nix file=lib/init.nix}
 { lib, pkgs, config, pipeline, checksLib, devshellLib }:
 rec {
   init = {
@@ -156,7 +156,7 @@ rec {
 
 Every verb invocation acquires an exclusive `flock` on `${vault}/.lsmw.lock` and blocks until released — concurrent calls on the same vault serialise, never race.
 
-```{.nix file=lib/init.nix as-a-real-non-nix-store-file="init module imported by the bootstrap"}
+```{.nix file=lib/init.nix}
       inherit (config) name;
       lockFile = ".${name}.lock";
       mkVerb = verb: spec: pkgs.writeShellApplication ({ name = "${name}-${verb}"; } // spec);
@@ -237,7 +237,7 @@ Every verb invocation acquires an exclusive `flock` on `${vault}/.lsmw.lock` and
 
 `install-hooks` installs a git pre-commit hook enforcing a root allowlist: only flake.nix, flake.lock, .envrc, README/LICENSE, AGENTS.md/CLAUDE.md, `.lsmw-allow` itself, and the literate source dir may be tracked at the consumer root. Everything else is rejected — tangled artifacts, result symlinks, pip venvs, node_modules, manifest files that should tangle from literate (issues #10, #12, #18, #24). This inverts the defaults: instead of blocklisting bad files one at a time, the consumer explicitly declares anything unusual via `.lsmw-allow` (one glob per line, `#` comments). Deliberately absent from the allowlist: `.gitignore`/`.gitattributes` — the `no-root-gitignore` pre-tangle check rejects those outright. Source dir detection: `LSMW_SOURCE_DIR` env, else the first existing conventional dir.
 
-```{.nix file=lib/init.nix as-a-real-non-nix-store-file="init module imported by the bootstrap"}
+```{.nix file=lib/init.nix}
       cli = pkgs.writeShellScriptBin name ''
         set -euo pipefail
         case "''${1:-}" in
@@ -329,7 +329,7 @@ HOOK
 
 Some consumers need a tangled file at evaluation time — a `package.json` derived from `package.lit.md` to feed `importNpmLock` or `bun2nix`, for example. `tangleAndRead` runs entangled inside a fixed-output-style derivation, then reads one specific file from the result. Gridinstruments uses this to drive its npm lockfile pipeline without committing JSON.
 
-```{.nix file=lib/init.nix as-a-real-non-nix-store-file="init module imported by the bootstrap"}
+```{.nix file=lib/init.nix}
   tangleAndRead = { pkgs, src, file, sourceDir ? ".english.lit.md" }: builtins.readFile "${
     pkgs.runCommand "tangle-for-eval" {
       nativeBuildInputs = [ (config.entangledFor pkgs) (config.pythonFor pkgs) ];
@@ -355,7 +355,7 @@ Consumers use `makeVerify` (which returns packages); the library itself needs to
 
 `lsmw mv`/`rm` correctness is owned upstream by [notesmd-cli](https://github.com/Yakitrak/notesmd-cli); we don't ship a fixture check that re-tests it — would duplicate upstream work and pin notesmd-cli's behaviour to a snapshot we'd have to maintain. `lsmw todo inline`'s bidirectional-link primitive is lsmw-owned (not in any upstream), so it DOES need fixture tests — see [[tests/todo-verb]].
 
-```{.nix file=lib/init.nix as-a-real-non-nix-store-file="init module imported by the bootstrap"}
+```{.nix file=lib/init.nix}
   mkChecks = { pkgs, tangled, pipeline, checksLib, init, tangleAndRead, todoVerb, writeVerb, src }:
     let
       prefixed = prefix: lib.mapAttrs' (name: value:

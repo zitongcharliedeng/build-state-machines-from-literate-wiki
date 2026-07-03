@@ -21,7 +21,7 @@ The watch list covers both `.lit.md` (plain markdown) and `.lit.mdx` (MDX with J
 
 The language table is split out as `defaultEntangledLanguages` so anything that needs to compose a custom `entangled.toml` (e.g. the per-file tangle in `lib/pipeline`, which narrows the `watch_list`) can reuse the exact same language declarations. Adding a new language is one row in one place — no drift.
 
-```{.nix file=lib/config.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+```{.nix file=lib/config.nix}
 { lib, entangledInput }:
 let
   defaultEntangledLanguages = ''
@@ -100,7 +100,7 @@ These three helpers follow the same pattern: try the most specific attribute fir
 
 `entangledFor` resolves the entangled binary from the flake input rather than from nixpkgs. Entangled is not in nixpkgs stable. The `entangledInput` argument is the `entangled` flake input — passed in at construction time so this module does not close over any global state.
 
-```{.nix file=lib/config.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+```{.nix file=lib/config.nix}
 
   entangledFor = pkgs: entangledInput.packages.${pkgs.stdenv.hostPlatform.system}.default;
 

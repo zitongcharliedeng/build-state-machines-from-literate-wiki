@@ -31,7 +31,7 @@ The caller's `shellHook` appends after all three layers, so consumer-specific me
 
 The hook also wraps `nix` itself with a soft nudge: bare `nix build` without `--no-link` prints a one-line hint pointing at the `build` wrapper, because a `./result` symlink defeats the store-only invariant. Not a ban — a wall at the wrong layer is brittle; hard prevention of tracked artifacts belongs at commit time via `install-hooks`.
 
-```{.nix file=lib/devshell.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+```{.nix file=lib/devshell.nix}
 { lib, config }:
 {
   mkDevShell = {

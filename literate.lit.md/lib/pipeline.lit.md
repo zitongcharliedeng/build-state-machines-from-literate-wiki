@@ -8,14 +8,14 @@ tags: [nix, pipeline, tangle, module]
 This module copies sources into a build sandbox, runs Entangled, strips generated markers, installs outputs to the nix store, and builds the local dev tangle app.
 
 ## Module signature
-```{.nix file=lib/pipeline.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+```{.nix file=lib/pipeline.nix}
 # ~~ Generated from literate.lit.md/lib/pipeline.lit.md
 { lib, config }:
 rec {
 ```
 ## expandLocalFileTargets
 `file=.suffix` means "use this literate file's owner name, then append `.suffix`". For example, inside `foo.english.lit.md`, `file=.ts` expands to `foo.english.ts`; inside `foo.english.lit.md`, `file=.machine.ts` expands to `foo.english.machine.ts`.
-```{.nix file=lib/pipeline.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+```{.nix file=lib/pipeline.nix}
   expandLocalFileTargets = { sourceDir ? ".english.lit.md", only ? "" }: ''
     LSMW_SOURCE_DIR=${lib.escapeShellArg sourceDir} LSMW_ONLY=${lib.escapeShellArg only} python3 - <<'PY'
 import os, re
@@ -77,7 +77,7 @@ PY
 ```
 ## projectSetup
 `projectSetup` copies the source tree into `build/`, writes `entangled.toml` (so the consumer never needs one), expands local `file=.` targets, and deletes `.entangled/filedb.json` so Entangled cannot skip outputs by trusting a stale database.
-```{.nix file=lib/pipeline.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+```{.nix file=lib/pipeline.nix}
   projectSetup = { src, sourceDir ? ".english.lit.md" }: ''
     mkdir -p build
     cp -r ${src}/. build/
@@ -94,7 +94,7 @@ PY
 ```
 ## stripEntangledMarkers
 Removes `~~ ` prefix comments that Entangled writes into generated files, skipping `.entangled/`, `entangled.toml`, and `*.lit.md` sources.
-```{.nix file=lib/pipeline.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+```{.nix file=lib/pipeline.nix}
   stripEntangledMarkers = ''
     find . \
       -type f \
@@ -114,7 +114,7 @@ Removes `~~ ` prefix comments that Entangled writes into generated files, skippi
 ```
 ## tangleProject
 Runs `entangled tangle --force` (required in a nix sandbox — no interactive terminal), then optionally strips markers.
-```{.nix file=lib/pipeline.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+```{.nix file=lib/pipeline.nix}
   tangleProject = { stripGeneratedMarkers ? true, sourceDir ? ".english.lit.md" }: ''
     ${expandLocalFileTargets { inherit sourceDir; }}
     entangled tangle --force
@@ -123,7 +123,7 @@ Runs `entangled tangle --force` (required in a nix sandbox — no interactive te
 ```
 ## installTargets
 Reads `.entangled/filedb.json` to discover tangled outputs, copies each into `$out` read-only, and fails loudly if the filedb or any declared target is missing.
-```{.nix file=lib/pipeline.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+```{.nix file=lib/pipeline.nix}
   installTargets = ''
     mkdir -p "$out"
     python3 - <<'PY'
@@ -152,7 +152,7 @@ Reads `.entangled/filedb.json` to discover tangled outputs, copies each into `$o
 ```
 ## tangle
 Composes `projectSetup`, `tangleProject`, and `installTargets` into a `pkgs.runCommand` derivation using binaries resolved by [[lib/config]].
-```{.nix file=lib/pipeline.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+```{.nix file=lib/pipeline.nix}
   tangle = {
     src,
     name ? "tangled",
@@ -172,7 +172,7 @@ Composes `projectSetup`, `tangleProject`, and `installTargets` into a `pkgs.runC
 
 ## enumerateLiterateFiles
 `enumerateLiterateFiles` walks `src` at eval time and returns a list of relative paths to every `.lit.mdx` and `.lit.md` file found under `sourceDir`. Used by `tanglePerFile` to build one derivation per literate source so a single-file edit invalidates only that file's tangle output, not the whole tree.
-```{.nix file=lib/pipeline.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+```{.nix file=lib/pipeline.nix}
   enumerateLiterateFiles = { src, sourceDir }:
     let
       root = "${src}/${sourceDir}";
@@ -197,7 +197,7 @@ Composes `projectSetup`, `tangleProject`, and `installTargets` into a `pkgs.runC
 `tangleOneFile` produces a derivation that tangles a single `.lit.mdx` file. The `watch_list` in `entangled.toml` is narrowed to just that one file so entangled's `.entangled/filedb.json` lists only this file's outputs; `installTargets` then copies only those to `$out`.
 
 Isolation is load-bearing: the derivation input is the **single file** read via `builtins.path`, not the whole `src` tree. If we substituted `${src}/${relPath}` we would embed the whole-tree store path as a string, re-hashing every per-file derivation on any sibling edit. `builtins.path { path = src + "/${sourceDir}/${relPath}"; name = ...; }` copies exactly one file into the store with a hash that depends only on that file's bytes, so an edit to sibling A leaves sibling B's derivation invariant.
-```{.nix file=lib/pipeline.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+```{.nix file=lib/pipeline.nix}
   tangleOneFile = {
     src,
     sourceDir,
@@ -244,7 +244,7 @@ Isolation is load-bearing: the derivation input is the **single file** read via 
 
 ## tanglePerFile
 `tanglePerFile` fans out `tangleOneFile` across every literate source found by `enumerateLiterateFiles`, then merges the per-file `$out` trees into one store path via a copy-based `runCommand` (not `symlinkJoin`). Copying is load-bearing: consumer modules frequently use relative imports like `./SIBLING_DIR`, and symlinked merges cause Nix to resolve those imports through the symlink into the per-file output where the sibling doesn't exist. Copying produces one real directory with all tangled files side-by-side, so relative imports resolve correctly. Edits to one `.lit.mdx` still only invalidate that per-file derivation; the merge step rebuilds but is cheap (just `cp`). The `passthru.perFile` attribute exposes the individual per-file derivations for downstream tools that want to consume just one slice.
-```{.nix file=lib/pipeline.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+```{.nix file=lib/pipeline.nix}
   tanglePerFile = {
     src,
     sourceDir,
@@ -271,7 +271,7 @@ Isolation is load-bearing: the derivation input is the **single file** read via 
 
 ## buildWebWiki
 Produces a deployable directory from literate sources, resolving `[[wiki links]]` to relative markdown links for GitHub Pages or any static host.
-```{.nix file=lib/pipeline.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+```{.nix file=lib/pipeline.nix}
   buildWebWiki = {
     src,
     pkgs,

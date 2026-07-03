@@ -11,7 +11,7 @@ This module owns all validation logic for literate-state-machine-wiki projects, 
 
 The module uses `rec` so helpers can reference each other by name without argument threading.
 
-```{.nix file=lib/checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+```{.nix file=lib/checks.nix}
 # ~~ Generated from literate.lit.md/lib/checks.lit.md
 { lib, config, pipeline }:
 rec {
@@ -21,7 +21,7 @@ rec {
 
 `makeTestImplementationHook` is the first v2-shaped contract living inside LSMW v1. It returns a normal `postTangle` hook, so consumers still use `literate-state-machine-wiki build` and the existing hook pipeline. The first behavior is intentionally tiny: if the implementation artifact is absent from the tangled execution context, emit `TEST_IMPLEMENTATION: missing _impl ...` and fail.
 
-```{.nix file=lib/checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+```{.nix file=lib/checks.nix}
   makeTestImplementationHook = { impl }:
     {
       name = "TEST_IMPLEMENTATION";
@@ -38,7 +38,7 @@ rec {
 
 Three checks run before Entangled writes output. `literate-structure` walks every `.lit.md`/`.lit.mdx` and enforces eight invariants: (1) code blocks contain no `//`/`/*` comments (explanations belong in prose); (2) blocks ≤ `maxBlockLength` lines (default 50); (3) ≥ `minProseLines` prose lines per file (default 3); (4) prose precedes the first code block; (5) `as-a-real-non-nix-store-file=` annotations warn (these are bootstrap escapes); (6) `file=` paths are relative, not absolute; (7) optional `enforceDirectoryMatch` rejects `file=` paths that don't match the source dir; (8) no `.md`/`.mdx` files outside the literate convention. `input-title-tooltips` rejects `<input title=>` in favor of accessible info-button dialogs. `no-root-gitignore` rejects a project-root `.gitignore` (and one inside `sourceDir`) because artifacts belong in the nix store, not in a tree-local ignore list — a tracked `.gitignore` signals the literate discipline has been broken upstream (node_modules/dist/result leaked into the tree). Rare opt-out: `allowRootGitignore = true`.
 
-```{.nix file=lib/checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+```{.nix file=lib/checks.nix}
 
   mkDefaultPreTangleChecks = {
     sourceDir ? ".english.lit.md",
@@ -210,7 +210,7 @@ LITCHECK
 
 No default post-tangle checks. Block-length is already checked pre-tangle with configurable `maxBlockLength`.
 
-```{.nix file=lib/checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+```{.nix file=lib/checks.nix}
   mkDefaultPostTangleChecks = [ ];
 ```
 
@@ -218,7 +218,7 @@ No default post-tangle checks. Block-length is already checked pre-tangle with c
 
 `collectNativeBuildInputs` flattens per-check dependency lists; `renderChecks` builds the bash script that runs them, wrapping warn-mode checks in `set +e` so they report without aborting.
 
-```{.nix file=lib/checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+```{.nix file=lib/checks.nix}
   collectNativeBuildInputs = checks:
     builtins.concatLists (map (check: check.nativeBuildInputs or [ ]) checks);
 
@@ -244,7 +244,7 @@ No default post-tangle checks. Block-length is already checked pre-tangle with c
 
 `renderChecksWaterModel` runs ALL checks in a stage, collects all violations, and shows everything at once. Only fails at the end if any error-mode check failed. This is the O(n) water model — contrast with `renderChecks` which aborts at the first error.
 
-```{.nix file=lib/checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+```{.nix file=lib/checks.nix}
   renderChecksWaterModel = phase: checks: let tag = "[${config.name}:${phase}]"; var = "_${config.name}"; in ''
     ${var}_errors=0
     ${var}_passed=""
@@ -288,7 +288,7 @@ No default post-tangle checks. Block-length is already checked pre-tangle with c
 
 `mkProjectCheck` wraps a single check in a nix derivation, making each custom check independently addressable and cacheable as `nix build .#checks.x86_64-linux.post-my-check`.
 
-```{.nix file=lib/checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+```{.nix file=lib/checks.nix}
   mkProjectCheck = {
     pkgs, src, name, command,
     nativeBuildInputs ? [ ],
@@ -310,7 +310,7 @@ No default post-tangle checks. Block-length is already checked pre-tangle with c
 
 `checkIdempotent` runs tangle twice and diffs the results (any difference is a hard failure); `checkImmutable` asserts every output file has permissions `444`.
 
-```{.nix file=lib/checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+```{.nix file=lib/checks.nix}
   checkIdempotent = {
     src, name ? "idempotent-check", pkgs,
  stripGeneratedMarkers ? true
@@ -343,7 +343,7 @@ No default post-tangle checks. Block-length is already checked pre-tangle with c
 
 Each check in `preTangleChecks` / `postTangleChecks` gets its own named derivation prefixed `pre-` or `post-`, with warn-mode checks exiting 0 so the derivation succeeds and caches.
 
-```{.nix file=lib/checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+```{.nix file=lib/checks.nix}
   makeNamedChecks = {
     phase, checks, pkgs, src, stripGeneratedMarkers
   }:
@@ -381,7 +381,7 @@ Each check in `preTangleChecks` / `postTangleChecks` gets its own named derivati
 
 `makeChecks` is used by the library's own flake for self-testing via `nix flake check`. Consumers call `makeVerify` instead — see below. Produces four standard derivations (`tangle-and-check`, `tangle-succeeds`, `tangle-idempotent`, `tangle-immutable`) plus one named derivation per entry in `preTangleChecks` / `postTangleChecks`.
 
-```{.nix file=lib/checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+```{.nix file=lib/checks.nix}
   makeChecks = {
     src, pkgs,
     sourceDir ? ".english.lit.md",
@@ -432,7 +432,7 @@ These pure functions operate on the `postTangle` hook list. They are extracted t
 
 **`filterUntil`** — the public entry point used by `until = "hookname"`. When `until == null`, returns the full hook list unchanged. When set, asserts the target hook exists (clear error if not), resolves its transitive closure, and filters the original list to that closure while preserving declaration order.
 
-```{.nix file=lib/checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+```{.nix file=lib/checks.nix}
   validateNeeds = hooks:
     let
       go = seen: remaining:
@@ -478,7 +478,7 @@ Five stages, four gates:
 4. `tested` — consumer tests run on the tree (water model)
 5. `default` — extracts tangled targets with chmod 444 into nix store
 
-```{.nix file=lib/checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+```{.nix file=lib/checks.nix}
   makeVerify = {
     src, pkgs,
     sourceDir ? ".english.lit.md",
