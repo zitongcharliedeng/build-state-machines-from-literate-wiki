@@ -665,11 +665,14 @@ Five stages, four gates:
     stripGeneratedMarkers ? true,
     postTangle ? [],
     until ? null,
-    allowRootGitignore ? false
+    allowRootGitignore ? false,
+    minProseLines ? 3,
+    maxBlockLength ? 50
   }:
     let
       allPreChecks = mkDefaultPreTangleChecks {
         inherit sourceDir tooltipCheckFile enforceDirectoryMatch allowRootGitignore;
+        inherit minProseLines maxBlockLength;
       };
 
       preChecked = pkgs.runCommand "literate-pre-checked" {
