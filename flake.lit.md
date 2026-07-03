@@ -232,6 +232,8 @@ Every verb invocation acquires an exclusive `flock` on `${vault}/.lsmw.lock` and
 
 `cli` is the user-facing entry point on `PATH`. Dispatches subcommands to the verbs above; unknown verb → usage + exit 1.
 
+`install-hooks` installs a git pre-commit hook enforcing a root allowlist: only flake.nix, flake.lock, .envrc, README/LICENSE, AGENTS.md/CLAUDE.md, `.lsmw-allow` itself, and the literate source dir may be tracked at the consumer root. Everything else is rejected — tangled artifacts, result symlinks, pip venvs, node_modules, manifest files that should tangle from literate (issues #10, #12, #18, #24). This inverts the defaults: instead of blocklisting bad files one at a time, the consumer explicitly declares anything unusual via `.lsmw-allow` (one glob per line, `#` comments). Deliberately absent from the allowlist: `.gitignore`/`.gitattributes` — the `no-root-gitignore` pre-tangle check rejects those outright. Source dir detection: `LSMW_SOURCE_DIR` env, else the first existing conventional dir.
+
 ```{.nix file=lib/init.nix as-a-real-non-nix-store-file="init module imported by the bootstrap"}
       cli = pkgs.writeShellScriptBin name ''
         set -euo pipefail
@@ -256,6 +258,51 @@ Every verb invocation acquires an exclusive `flock` on `${vault}/.lsmw.lock` and
           write)
             shift
             exec ${writeVerb}/bin/${name}-write "$@"
+            ;;
+          install-hooks)
+            if [ ! -d .git ]; then
+              echo "${name}: not a git repo (no .git/ found)" >&2
+              exit 1
+            fi
+            mkdir -p .git/hooks
+            cat > .git/hooks/pre-commit <<'HOOK'
+#!/usr/bin/env bash
+set -eu
+source_dir="''${LSMW_SOURCE_DIR:-}"
+if [ -z "$source_dir" ]; then
+  for d in .english.lit.md literate.lit.md literate.lit.mdx literate; do
+    [ -d "$d" ] && source_dir="$d" && break
+  done
+fi
+builtin_allow=(flake.nix flake.lock .envrc README README.md LICENSE LICENSE.md AGENTS.md CLAUDE.md .lsmw-allow)
+user_allow=()
+if [ -f .lsmw-allow ]; then
+  while IFS= read -r line; do
+    line="''${line%%#*}"; line="''${line## }"; line="''${line%% }"
+    [ -z "$line" ] || user_allow+=("$line")
+  done < .lsmw-allow
+fi
+allow_all=("''${builtin_allow[@]}" "''${user_allow[@]}" "$source_dir")
+staged="$(git diff --cached --name-only)"
+offenders=""
+while IFS= read -r path; do
+  [ -z "$path" ] && continue
+  case "$path" in "$source_dir"/*) continue ;; esac
+  matched=0
+  for allowed in "''${allow_all[@]}"; do
+    case "$path" in "$allowed"|$allowed) matched=1; break ;; esac
+  done
+  [ "$matched" = 1 ] || offenders="$offenders  $path"$'\n'
+done <<< "$staged"
+if [ -n "$offenders" ]; then
+  echo "pre-commit: root-allowlist violation" >&2
+  printf '%s' "$offenders" >&2
+  echo "literate source belongs in $source_dir/; derived artifacts live in the nix store; legitimately root-level globs go in .lsmw-allow" >&2
+  exit 1
+fi
+HOOK
+            chmod +x .git/hooks/pre-commit
+            echo "${name}: pre-commit root-allowlist hook installed"
             ;;
           *) exit 1 ;;
         esac

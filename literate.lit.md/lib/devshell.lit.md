@@ -29,6 +29,8 @@ Three layers compose in order:
 
 The caller's `shellHook` appends after all three layers, so consumer-specific messages and setup always run last.
 
+The hook also wraps `nix` itself with a soft nudge: bare `nix build` without `--no-link` prints a one-line hint pointing at the `build` wrapper, because a `./result` symlink defeats the store-only invariant. Not a ban — a wall at the wrong layer is brittle; hard prevention of tracked artifacts belongs at commit time via `install-hooks`.
+
 ```{.nix file=lib/devshell.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
 { lib, config }:
 {
@@ -53,10 +55,18 @@ The caller's `shellHook` appends after all three layers, so consumer-specific me
     in pkgs.mkShell {
       packages = [ (config.entangledFor pkgs) ] ++ basePackages ++ extraPackages;
       shellHook = ''
-        build() { nix build --no-link --print-out-paths "$@"; }
+        build() { command nix build --no-link --print-out-paths "$@"; }
         export -f build
+        nix() {
+          if [ "$1" = "build" ] && [[ " $* " != *" --no-link "* ]]; then
+            echo "[${config.name}] hint: 'build' (wraps --no-link) avoids creating ./result. Proceeding anyway." >&2
+          fi
+          command nix "$@"
+        }
+        export -f nix
         ${envExports}
         echo "[${config.name}] entangled: $(entangled --version 2>/dev/null || echo 'NOT FOUND')"
+        echo "[${config.name}] tangle & build: use 'build' (wraps --no-link --print-out-paths)."
         ${lib.optionalString (tangleCommand != null) ''
           if ${autoTangleCondition}; then
             echo "[${config.name}] Auto-tangling literate source..."
