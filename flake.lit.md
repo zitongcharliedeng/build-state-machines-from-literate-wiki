@@ -364,7 +364,7 @@ Consumers use `makeVerify` (which returns packages); the library itself needs to
         inherit pkgs lib checksLib tangleAndRead;
         lsmwInit = init;
       };
-      waterModelTests = import "${tangled}/tests/water-model.nix" {
+      pipelineMachineTests = import "${tangled}/tests/pipeline-machine.nix" {
         inherit pkgs lib checksLib;
       };
       todoVerbTests = import "${tangled}/tests/todo-verb.nix" {
@@ -376,10 +376,9 @@ Consumers use `makeVerify` (which returns packages); the library itself needs to
         tangled = pipeline.tangle { inherit pkgs src; };
         inherit pkgs;
       };
-      unit-tests = import "${tangled}/tests/unit-check.nix" { inherit pkgs lib checksLib; };
     }
     // prefixed "integration" integrationTests
-    // prefixed "water-model" waterModelTests
+    // prefixed "machine" pipelineMachineTests
     // prefixed "todo" todoVerbTests;
 }
 ```
