@@ -20,8 +20,6 @@ let
     ---
     description: minimal fixture for integration tests
     tags: [test]
-    lsmw:
-      claimType: Raw
     ---
 
     # Hello
@@ -44,8 +42,6 @@ let
 
   localDotTargetLit = ''
     ---
-    lsmw:
-      claimType: Raw
     ---
 
     Dot-local targets inherit the literate owner filename.
