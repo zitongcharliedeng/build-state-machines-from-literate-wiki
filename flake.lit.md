@@ -78,6 +78,8 @@ TOML
 
 After the IFD-tangle, every `.nix` under `lib/` is in the store. The bootstrap imports them in dependency order — `config` first (no deps), then `pipeline` (uses config), then `checksLib`/`devshellLib`, then `initModule` which composes them.
 
+The library's own `init` call sets `maxBlockLength = 200` while consumers keep the strict 50 default: six of our own blocks (bootstrap, checks ×2, config, pipeline ×2) grew past 50 before the knob existed. That is tracked debt — splitting them with real prose brings this line back to the default, and nothing new may hide behind it.
+
 ```{.nix file=flake.nix as-a-real-non-nix-store-file="bootstrap"}
       config = import "${tangled}/lib/config.nix" { inherit lib; entangledInput = entangled; };
       pipeline = import "${tangled}/lib/pipeline.nix" { inherit lib config; };
@@ -91,6 +93,7 @@ After the IFD-tangle, every `.nix` under `lib/` is in the store. The bootstrap i
         inherit pkgs;
         src = ./.;
         sourceDir = "literate.lit.md";
+        maxBlockLength = 200;
         ignoreLiterateGitSubmodules = true;
       };
     in

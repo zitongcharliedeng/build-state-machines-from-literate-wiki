@@ -36,7 +36,7 @@ rec {
 
 ## Pre-tangle checks
 
-Three checks run before Entangled writes output. `literate-structure` walks every `.lit.md`/`.lit.mdx` and enforces eight invariants: (1) code blocks contain no `//`/`/*` comments (explanations belong in prose); (2) blocks ≤ `maxBlockLength` lines (default 50); (3) ≥ `minProseLines` prose lines per file (default 3); (4) prose precedes the first code block; (5) `as-a-real-non-nix-store-file=` annotations warn (these are bootstrap escapes); (6) `file=` paths are relative, not absolute; (7) optional `enforceDirectoryMatch` rejects `file=` paths that don't match the source dir; (8) no `.md`/`.mdx` files outside the literate convention. `input-title-tooltips` rejects `<input title=>` in favor of accessible info-button dialogs. `no-root-gitignore` rejects a project-root `.gitignore` (and one inside `sourceDir`) because artifacts belong in the nix store, not in a tree-local ignore list — a tracked `.gitignore` signals the literate discipline has been broken upstream (node_modules/dist/result leaked into the tree). Rare opt-out: `allowRootGitignore = true`.
+Three checks run before Entangled writes output. `literate-structure` walks every `.lit.md`/`.lit.mdx` and enforces eight invariants: (1) code blocks contain no `//`/`/*` comments (explanations belong in prose) — except `.nix` blocks, where a leading `//` is the attrset-merge operator, not a comment; (2) blocks ≤ `maxBlockLength` lines (default 50); (3) ≥ `minProseLines` prose lines per file (default 3); (4) prose precedes the first code block; (5) `as-a-real-non-nix-store-file=` annotations warn (these are bootstrap escapes); (6) `file=` paths are relative, not absolute; (7) optional `enforceDirectoryMatch` rejects `file=` paths that don't match the source dir; (8) no `.md`/`.mdx` files outside the literate convention. `input-title-tooltips` rejects `<input title=>` in favor of accessible info-button dialogs. `no-root-gitignore` rejects a project-root `.gitignore` (and one inside `sourceDir`) because artifacts belong in the nix store, not in a tree-local ignore list — a tracked `.gitignore` signals the literate discipline has been broken upstream (node_modules/dist/result leaked into the tree). Rare opt-out: `allowRootGitignore = true`.
 
 ```{.nix file=lib/checks.nix}
 
@@ -75,6 +75,7 @@ for root, _, files in os.walk(source_dir):
         in_block = False
         block_start = 0
         block_lines = 0
+        block_lang = ""
         has_annotation = False
         prose_lines = 0
         first_block = False
@@ -88,6 +89,8 @@ for root, _, files in os.walk(source_dir):
                 in_block = True
                 block_start = num
                 block_lines = 0
+                lang_match = re.search(r"\{\s*\.([A-Za-z0-9]+)", trimmed)
+                block_lang = lang_match.group(1).lower() if lang_match else ""
                 has_annotation = "file=" in trimmed
 
                 if not first_block and prose_lines > 0:
@@ -135,7 +138,7 @@ for root, _, files in os.walk(source_dir):
 
             if in_block:
                 block_lines += 1
-                if forbid_comments and re.match(r"^\s*(//|/\*|\*/)", line):
+                if forbid_comments and block_lang != "nix" and re.match(r"^\s*(//|/\*|\*/)", line):
                     if "http://" not in line and "https://" not in line:
                         print(f"  error core/no-comments-in-blocks: {path}:{num}")
                         print(f"    Comments belong in prose between blocks")

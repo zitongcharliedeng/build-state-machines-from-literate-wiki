@@ -68,6 +68,7 @@ TOML
         inherit pkgs;
         src = ./.;
         sourceDir = "literate.lit.md";
+        maxBlockLength = 200;
         ignoreLiterateGitSubmodules = true;
       };
     in
