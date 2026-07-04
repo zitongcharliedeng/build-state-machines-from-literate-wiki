@@ -26,6 +26,8 @@ outputs = { self, lsmw, ... }: lsmw.lib.minimalFlake { src = self; };
 
 `nix build` runs the full escalating pipeline and fails early at the first broken stage. `nix run` serves the verified result on localhost (default port 8000; `nix run . -- 8931` to pick another). `minimalFlake` optionally takes `sourceDir` (default: auto-detected — `.english.lit.md`, `literate.lit.md`, `literate.lit.mdx`, or `literate`, first that exists in `src`), `postTangle` (an ordered list of commands — your linters and tests — run on the tangled tree), and `pkgs`.
 
+Your pages live in a `literate.lit.md/` directory (or any of the auto-detected names) — it is a directory of `.lit.md` files, one page each, as many as you like. Code is declared with pandoc-attribute fences: open a block with `` ```{.js file=maze.js} `` and close with `` ``` ``. The `file=` path is where the block tangles to, relative to the project root — and that exact path is where `nix run`'s server exposes it, so `file=index.html` is what makes `http://localhost:8000/` resolve.
+
 `minimalFlake` is one call to `lib.init`, the full-control entry point:
 
 ```
@@ -83,13 +85,13 @@ The modules, each doing one thing:
 
 ## The store output IS the product
 
-The full project tree — literate source, tangled code, and any artifacts produced by postTangle hooks — lives in the nix store after `literate-state-machine-wiki build`. Nothing is filtered out. The literate `.lit.md` files are documentation, readable prose, and can serve as static assets. The tangled code is the executable output. Whatever the consumer's hooks produce belongs in the store too.
+The full project tree — literate source, tangled code, and any artifacts produced by postTangle hooks — lives in the nix store after `literate-state-machine-wiki build`. Nothing is filtered out. The literate `.lit.md` files are documentation, readable prose, and can serve as static assets. The tangled code is the executable output. Whatever the consumer's hooks produce belongs in the store too. Practical consequence for `nix run`: the server root is this whole tree — your `file=` targets are reachable at their exact paths, and so are the literate sources and `entangled.toml`. There is no filtered `dist/`; if you want one, produce it with a hook and it ships in the same tree.
 
 Nix garbage collection operates on entire store paths, not individual files. If a consumer doesn't reference the store output, nix GC removes the whole thing. The tool does not decide what's useful — the consumer does.
 
 ## Hook system
 
-literate-state-machine-wiki is a hook system, like Claude Code hooks. The library provides pre-tangle hooks (prose density, annotations) and the tangle step (entangled, hidden). The consumer provides `postTangle` hooks — an ordered list of commands to run after tangling. The library is language-agnostic: it does not know about npm, TypeScript, vite, or any ecosystem. The consumer handles their own tooling in their hooks.
+literate-state-machine-wiki is a hook system, like Claude Code hooks. The library provides pre-tangle hooks (prose density, annotations) and the tangle step (entangled, hidden). The consumer provides `postTangle` hooks — an ordered list run after tangling. Each entry is either a plain command string, or an attrset `{ name, command, nativeBuildInputs ? [ ], mode ? "error", needs ? [ ], cwd ? "." }` when you need to name a hook, declare tools, warn instead of fail, or order it after another hook. Node and Python are already on the hook PATH; anything else must be declared in `nativeBuildInputs` (attrset form) — beyond those two the stage has no implicit ecosystem. The library is language-agnostic: it does not know about npm, TypeScript, vite, or any framework; the consumer handles their own tooling in their hooks. So a minimal-but-tested flake stays minimal: `minimalFlake { src = self; postTangle = [ "node --check main.js" ]; }`.
 
 ## Forms emerge when needed
 

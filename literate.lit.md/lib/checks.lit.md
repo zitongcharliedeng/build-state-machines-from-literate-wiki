@@ -478,6 +478,8 @@ Five stages, four gates:
 4. `tested` — consumer tests run on the tree (water model)
 5. `default` — extracts tangled targets with chmod 444 into nix store
 
+`postTangle` entries may be plain command strings — `makeVerify` normalizes each to a hook named `post-tangle-N` by list position. The hook stage always carries Node and Python on PATH (the same toolchain the tangle stage and devshell already use), so the common "syntax-check what I just tangled" case needs no `pkgs` handle; anything beyond those two is declared per-hook via `nativeBuildInputs`.
+
 ```{.nix file=lib/checks.nix}
   makeVerify = {
     src, pkgs,
@@ -523,13 +525,17 @@ TOML
         ${pipeline.tangleProject { inherit sourceDir stripGeneratedMarkers; }}
       '';
 
-      _needsValid = validateNeeds postTangle;
-      effectivePostTangle = filterUntil { inherit postTangle until; };
+      normalizedPostTangle = lib.imap1
+        (i: h: if builtins.isString h then { name = "post-tangle-${toString i}"; command = h; } else h)
+        postTangle;
+      _needsValid = validateNeeds normalizedPostTangle;
+      effectivePostTangle = filterUntil { postTangle = normalizedPostTangle; inherit until; };
 
       # Output: the full tree WITH any hook artifacts (e.g. dist/ from vite build)
       postTangled = assert _needsValid; if effectivePostTangle == [] then tangledTree else
         pkgs.runCommand "literate-post-tangled" {
-          nativeBuildInputs = collectNativeBuildInputs effectivePostTangle;
+          nativeBuildInputs = [ (config.nodejsFor pkgs) (config.pythonFor pkgs) ]
+            ++ collectNativeBuildInputs effectivePostTangle;
         } ''
           set -euo pipefail
           cp -r ${tangledTree}/. $out/
