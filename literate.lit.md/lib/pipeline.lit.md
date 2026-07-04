@@ -9,7 +9,6 @@ This module copies sources into a build sandbox, runs Entangled, strips generate
 
 ## Module signature
 ```{.nix file=lib/pipeline.nix}
-# ~~ Generated from literate.lit.md/lib/pipeline.lit.md
 { lib, config }:
 rec {
 ```

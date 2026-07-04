@@ -31,21 +31,17 @@ Each non-symlink bootstrap file must match byte-for-byte. The test runs `entangl
 
 ## The implementation
 
-We build the literate source through `pipeline.tangle` (which is what `makeVerify` uses internally), producing a tangled tree in the nix store. Then we diff the bootstrap files against the committed versions. `diff -q` is used because we don't need human-readable diffs — pass/fail is enough for CI, and when a developer debugs a failure they can drop to `diff` themselves.
+We build the literate source through `pipeline.tangle` (which is what `makeVerify` uses internally), producing a tangled tree in the nix store — `stage2` in GCC terms, the library building itself, with generated markers preserved for byte comparison. Then we diff each bootstrap file against the committed version; `diff`'s stderr stays visible so "file not found" is distinguishable from "content differs". `diff -q` is used because we don't need human-readable diffs — pass/fail is enough for CI, and when a developer debugs a failure they can drop to `diff` themselves. The final structural assertion: `README.md` must still be a symlink to `literate.lit.md/index.lit.md` — a contributor replacing it with a real file is silent bootstrap divergence.
 
 ```{.nix file=tests/self-host.nix}
-# Generated from literate.lit.md/tests/self-host.lit.md — DO NOT EDIT
 { pkgs, lib, src, pipelineLib }:
 
 let
-  # Tangle the literate source using the library's own pipeline.
-  # This is Stage 2 in the bootstrap — the library building itself.
   stage2 = pipelineLib.tangle {
     inherit pkgs src;
-    stripGeneratedMarkers = false;  # preserve markers for byte comparison
+    stripGeneratedMarkers = false;
   };
 
-  # Files that must match bitwise between committed bootstrap and stage2 tangle.
   bootstrapFiles = [
     "flake.nix"
     "lib/checks.nix"
@@ -55,7 +51,6 @@ let
   ];
 
   diffCommands = builtins.concatStringsSep "\n" (map (file: ''
-    # stderr visible so "file not found" is distinguishable from "content diff"
     if ! diff -q "${src}/${file}" "${stage2}/${file}" > /dev/null; then
       echo "❌ DRIFT: ${file} differs between committed bootstrap and tangled output"
       echo "   Committed:  ${src}/${file}"
@@ -73,8 +68,6 @@ pkgs.runCommand "literate-state-machine-wiki-self-host-check" { } ''
   echo "=== Self-hosting check: committed bootstrap vs tangled output ==="
   ${diffCommands}
 
-  # README.md must be a symlink to the canonical literate source. If a contributor
-  # replaces it with a real file, the bootstrap structure has silently diverged.
   if [ ! -L "${src}/README.md" ]; then
     echo "❌ STRUCTURE: README.md is not a symlink"
     echo "   Expected: symlink to literate.lit.md/index.lit.md"

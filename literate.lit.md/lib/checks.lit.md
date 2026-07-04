@@ -12,7 +12,6 @@ This module owns all validation logic for literate-state-machine-wiki projects, 
 The module uses `rec` so helpers can reference each other by name without argument threading.
 
 ```{.nix file=lib/checks.nix}
-# ~~ Generated from literate.lit.md/lib/checks.lit.md
 { lib, config, pipeline }:
 rec {
 ```
@@ -36,7 +35,7 @@ rec {
 
 ## Pre-tangle checks
 
-Three checks run before Entangled writes output. `literate-structure` walks every `.lit.md`/`.lit.mdx` and enforces eight invariants: (1) code blocks contain no `//`/`/*` comments (explanations belong in prose) — except `.nix` blocks, where a leading `//` is the attrset-merge operator, not a comment; (2) blocks ≤ `maxBlockLength` lines (default 50); (3) ≥ `minProseLines` prose lines per file (default 3); (4) prose precedes the first code block; (5) `as-a-real-non-nix-store-file=` annotations warn (these are bootstrap escapes); (6) `file=` paths are relative, not absolute; (7) optional `enforceDirectoryMatch` rejects `file=` paths that don't match the source dir; (8) no `.md`/`.mdx` files outside the literate convention. `input-title-tooltips` rejects `<input title=>` in favor of accessible info-button dialogs. `no-root-gitignore` rejects a project-root `.gitignore` (and one inside `sourceDir`) because artifacts belong in the nix store, not in a tree-local ignore list — a tracked `.gitignore` signals the literate discipline has been broken upstream (node_modules/dist/result leaked into the tree). Rare opt-out: `allowRootGitignore = true`.
+Three checks run before Entangled writes output. `literate-structure` walks every `.lit.md`/`.lit.mdx` and enforces eight invariants: (1) code blocks contain no comment lines — explanations belong in prose; what counts as a comment comes from the block's language via `config.commentTokenFor` (the same one table that renders `entangled.toml`, so `//` flags in JS but not in nix where it's the merge operator), with shebangs exempt; (2) blocks ≤ `maxBlockLength` lines (default 50); (3) ≥ `minProseLines` prose lines per file (default 3); (4) prose precedes the first code block; (5) `as-a-real-non-nix-store-file=` annotations warn (these are bootstrap escapes); (6) `file=` paths are relative, not absolute; (7) optional `enforceDirectoryMatch` rejects `file=` paths that don't match the source dir; (8) no `.md`/`.mdx` files outside the literate convention. `input-title-tooltips` rejects `<input title=>` in favor of accessible info-button dialogs. `no-root-gitignore` rejects a project-root `.gitignore` (and one inside `sourceDir`) because artifacts belong in the nix store, not in a tree-local ignore list — a tracked `.gitignore` signals the literate discipline has been broken upstream (node_modules/dist/result leaked into the tree). Rare opt-out: `allowRootGitignore = true`.
 
 ```{.nix file=lib/checks.nix}
 
@@ -59,6 +58,7 @@ source_dir = ${builtins.toJSON sourceDir}
 min_prose = ${toString minProseLines}
 max_block = ${toString maxBlockLength}
 forbid_comments = True
+comment_tokens = ${builtins.toJSON config.commentTokenFor}
 enforce_dirs = ${if enforceDirectoryMatch then "True" else "False"}
 errors = 0
 violations = 0
@@ -97,7 +97,6 @@ for root, _, files in os.walk(source_dir):
                     has_intro = True
                 first_block = True
 
-                # Warn on bootstrap files (as-a-real-non-nix-store-file)
                 if "as-a-real-non-nix-store-file=" in trimmed:
                     reason_match = re.search(r'as-a-real-non-nix-store-file="([^"]*)"', trimmed)
                     reason = reason_match.group(1) if reason_match else "no reason given"
@@ -105,7 +104,6 @@ for root, _, files in os.walk(source_dir):
                     print(f"    This file exists outside the nix store: {reason}")
                     violations += 1
 
-                # Warn on absolute file= paths (antipattern — prefer relative)
                 if has_annotation:
                     file_match = re.search(r'file=([^\s}"]+)', trimmed)
                     if file_match:
@@ -138,10 +136,11 @@ for root, _, files in os.walk(source_dir):
 
             if in_block:
                 block_lines += 1
-                if forbid_comments and block_lang != "nix" and re.match(r"^\s*(//|/\*|\*/)", line):
+                token = comment_tokens.get(block_lang, "").strip()
+                if forbid_comments and token and trimmed.startswith(token) and not trimmed.startswith("#!"):
                     if "http://" not in line and "https://" not in line:
                         print(f"  error core/no-comments-in-blocks: {path}:{num}")
-                        print(f"    Comments belong in prose between blocks")
+                        print(f"    A leading '{token}' comment belongs in prose between blocks")
                         errors += 1
             else:
                 if len(trimmed) > 0 and not trimmed.startswith("#") and not trimmed.startswith("---"):
@@ -481,7 +480,7 @@ Five stages, four gates:
 4. `tested` — consumer tests run on the tree (water model)
 5. `default` — extracts tangled targets with chmod 444 into nix store
 
-`postTangle` entries may be plain command strings — `makeVerify` normalizes each to a hook named `post-tangle-N` by list position. The hook stage always carries Node and Python on PATH (the same toolchain the tangle stage and devshell already use), so the common "syntax-check what I just tangled" case needs no `pkgs` handle; anything beyond those two is declared per-hook via `nativeBuildInputs`.
+`postTangle` entries may be plain command strings — `makeVerify` normalizes each to a hook named `post-tangle-N` by list position. The hook stage always carries Node and Python on PATH (the same toolchain the tangle stage and devshell already use), so the common "syntax-check what I just tangled" case needs no `pkgs` handle; anything beyond those two is declared per-hook via `nativeBuildInputs`. The default output is the full tree including whatever the hooks produced — a `dist/` from vite, coverage reports — hook artifacts ship in the same store path.
 
 ```{.nix file=lib/checks.nix}
   makeVerify = {
@@ -534,7 +533,6 @@ TOML
       _needsValid = validateNeeds normalizedPostTangle;
       effectivePostTangle = filterUntil { postTangle = normalizedPostTangle; inherit until; };
 
-      # Output: the full tree WITH any hook artifacts (e.g. dist/ from vite build)
       postTangled = assert _needsValid; if effectivePostTangle == [] then tangledTree else
         pkgs.runCommand "literate-post-tangled" {
           nativeBuildInputs = [ (config.nodejsFor pkgs) (config.pythonFor pkgs) ]

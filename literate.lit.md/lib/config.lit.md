@@ -17,7 +17,7 @@ Rather than copy these values into every flake that imports this library, they l
 
 ## The entangled TOML default
 
-The `defaultEntangledToml` string is the standard language table for literate-state-machine-wiki projects. It registers comment annotation markers for every language the wiki commonly uses. The `~~ ` prefix on generated comments is how Entangled marks tangled lines so it can round-trip edits — never change this string without also updating all existing `.entangled/filedb.json` caches.
+`languages` is the single model of per-language syntax in the whole tool. Each entry declares the language's comment token once; everything else is a projection of this table: the entangled TOML (comment token + `~~ ` becomes Entangled's round-trip marker), and the pre-tangle no-comments check (the same token is what the check flags at line starts — see [[lib/checks]]). Never encode language knowledge anywhere else. The `~~ ` marker is how Entangled tags tangled lines — never change it without also updating all existing `.entangled/filedb.json` caches.
 
 The watch list covers both `.lit.md` (plain markdown) and `.lit.mdx` (MDX with JSX) extensions. Projects that only use one extension can override `entangled.toml` directly — this default is intentionally permissive.
 
@@ -26,70 +26,31 @@ The language table is split out as `defaultEntangledLanguages` so anything that 
 ```{.nix file=lib/config.nix}
 { lib, entangledInput }:
 let
-  defaultEntangledLanguages = ''
+  languages = [
+    { name = "TypeScript"; identifiers = [ "ts" "typescript" ]; comment = "// "; }
+    { name = "JavaScript"; identifiers = [ "js" "jsx" "javascript" ]; comment = "// "; }
+    { name = "Nix";        identifiers = [ "nix" ];              comment = "# "; }
+    { name = "CSS";        identifiers = [ "css" ];              comment = "/* "; close = " */"; }
+    { name = "HTML";       identifiers = [ "html" ];             comment = "<!-- "; close = " -->"; }
+    { name = "Rust";       identifiers = [ "rust" "rs" ];        comment = "// "; }
+    { name = "Python";     identifiers = [ "python" "py" ];      comment = "# "; }
+    { name = "Bash";       identifiers = [ "bash" "sh" ];        comment = "# "; }
+    { name = "YAML";       identifiers = [ "yaml" "yml" ];       comment = "# "; }
+    { name = "JSON";       identifiers = [ "json" ];             comment = "// "; }
+    { name = "Markdown";   identifiers = [ "md" "markdown" ];    comment = "<!-- "; close = " -->"; }
+    { name = "TOML";       identifiers = [ "toml" ];             comment = "# "; }
+  ];
+  defaultEntangledLanguages = lib.concatMapStringsSep "\n" (l: ''
     [[languages]]
-    name = "TypeScript"
-    identifiers = ["ts", "typescript"]
-    comment = { open = "// ~~ " }
-
-    [[languages]]
-    name = "JavaScript"
-    identifiers = ["js", "jsx", "javascript"]
-    comment = { open = "// ~~ " }
-
-    [[languages]]
-    name = "Nix"
-    identifiers = ["nix"]
-    comment = { open = "# ~~ " }
-
-    [[languages]]
-    name = "CSS"
-    identifiers = ["css"]
-    comment = { open = "/* ~~ ", close = " */" }
-
-    [[languages]]
-    name = "HTML"
-    identifiers = ["html"]
-    comment = { open = "<!-- ~~ ", close = " -->" }
-
-    [[languages]]
-    name = "Rust"
-    identifiers = ["rust", "rs"]
-    comment = { open = "// ~~ " }
-
-    [[languages]]
-    name = "Python"
-    identifiers = ["python", "py"]
-    comment = { open = "# ~~ " }
-
-    [[languages]]
-    name = "Bash"
-    identifiers = ["bash", "sh"]
-    comment = { open = "# ~~ " }
-
-    [[languages]]
-    name = "YAML"
-    identifiers = ["yaml", "yml"]
-    comment = { open = "# ~~ " }
-
-    [[languages]]
-    name = "JSON"
-    identifiers = ["json"]
-    comment = { open = "// ~~ " }
-
-    [[languages]]
-    name = "Markdown"
-    identifiers = ["md", "markdown"]
-    comment = { open = "<!-- ~~ ", close = " -->" }
-
-    [[languages]]
-    name = "TOML"
-    identifiers = ["toml"]
-    comment = { open = "# ~~ " }
-  '';
+    name = "${l.name}"
+    identifiers = [${lib.concatMapStringsSep ", " (i: ''"${i}"'') l.identifiers}]
+    comment = { open = "${l.comment}~~ "${lib.optionalString (l ? close) '', close = "${l.close}"''} }
+  '') languages;
 in
 {
-  inherit defaultEntangledLanguages;
+  inherit languages defaultEntangledLanguages;
+  commentTokenFor = builtins.listToAttrs
+    (lib.concatMap (l: map (i: { name = i; value = l.comment; }) l.identifiers) languages);
   name = "lsmw";
   sourceDirCandidates = [ ".english.lit.md" "literate.lit.md" "literate.lit.mdx" "literate" ];
 

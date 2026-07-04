@@ -22,7 +22,7 @@ let
     tags: [test]
     ---
 
-    # Hello
+    Hello — a minimal fixture page.
 
     This is a minimal literate file with enough prose to pass the default prose density check. The library requires at least three lines of prose before any code block, and this paragraph satisfies that constraint.
 
