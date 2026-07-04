@@ -1,4 +1,4 @@
-# ~/~ begin <<flake.lit.md#flake.nix>>[init]
+# ~~  ~/~ begin <<flake.lit.md#flake.nix>>[init]
 {
   description = "literate-state-machine-wiki — root bootstrap (tangled from flake.lit.md)";
 
@@ -10,8 +10,8 @@
   nixConfig = {
     allow-import-from-derivation = true;
   };
-# ~/~ end
-# ~/~ begin <<flake.lit.md#flake.nix>>[1]
+# ~~  ~/~ end
+# ~~  ~/~ begin <<flake.lit.md#flake.nix>>[1]
   outputs = { self, nixpkgs, entangled }:
     let
       system = "x86_64-linux";
@@ -54,8 +54,8 @@ TOML
         entangled tangle --force
         rm -rf .entangled
       '';
-# ~/~ end
-# ~/~ begin <<flake.lit.md#flake.nix>>[2]
+# ~~  ~/~ end
+# ~~  ~/~ begin <<flake.lit.md#flake.nix>>[2]
       config = import "${tangled}/lib/config.nix" { inherit lib; entangledInput = entangled; };
       pipeline = import "${tangled}/lib/pipeline.nix" { inherit lib config; };
       checksLib = import "${tangled}/lib/checks.nix" { inherit lib config pipeline; };
@@ -75,7 +75,7 @@ TOML
         lib = {
           inherit init tangleAndRead;
           inherit (config) defaultEntangledToml;
-          minimalFlake = { src, sourceDir ? ".english.lit.md", pkgs ? nixpkgs.legacyPackages.${system} }:
+          minimalFlake = { src, sourceDir ? null, pkgs ? nixpkgs.legacyPackages.${system} }:
             init { inherit pkgs src sourceDir; ignoreLiterateGitSubmodules = true; };
         };
 
@@ -93,4 +93,4 @@ TOML
         };
       };
 }
-# ~/~ end
+# ~~  ~/~ end

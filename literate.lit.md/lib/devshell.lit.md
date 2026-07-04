@@ -13,7 +13,7 @@ This module takes `{ lib, config }` where `config` is the attrset produced by [[
 
 The canonical literate-state-machine-wiki workflow is: edit `.lit.md`, run `tangle`, read generated output. Without auto-tangle, a developer entering the shell after a `git pull` will have stale generated files with no indication anything is wrong. Auto-tangle on entry makes the shell self-healing: generated files always reflect the current literate sources before any `bun run` or `tsc` invocation can see them.
 
-The `sourceGlobs` parameter controls whether auto-tangle fires. An empty list means "always tangle." A non-empty list uses `compgen -G` to check whether any matching files exist — if none do, the project has no literate sources and the shell skips the tangle step silently. This handles mono-repos where only some sub-packages are literate.
+The `sourceGlobs` parameter controls whether auto-tangle fires. An empty list means "always tangle." A non-empty list uses `compgen -G` to check whether any matching files exist — if none do, the project has no literate sources and the shell skips the tangle step silently. This handles mono-repos where only some sub-packages are literate. The default globs are derived from `config.sourceDirCandidates`, so every conventional literate directory name triggers auto-tangle without configuration.
 
 ## Why pass config rather than hardcode the helpers?
 
@@ -39,7 +39,7 @@ The hook also wraps `nix` itself with a soft nudge: bare `nix build` without `--
     basePackages ? [ (config.nodejsFor pkgs) (config.pythonFor pkgs) ],
     extraPackages ? [ ],
     env ? { },
-    sourceGlobs ? [ ".english.lit.md/*.lit.md" ".english.lit.md/**/*.lit.md" ".english.lit.md/*.lit.mdx" ".english.lit.md/**/*.lit.mdx" ],
+    sourceGlobs ? lib.concatMap (d: [ "${d}/*.lit.md" "${d}/**/*.lit.md" "${d}/*.lit.mdx" "${d}/**/*.lit.mdx" ]) config.sourceDirCandidates,
     tangleCommand ? null,
     shellHook ? ""
   }:

@@ -98,7 +98,7 @@ After the IFD-tangle, every `.nix` under `lib/` is in the store. The bootstrap i
         lib = {
           inherit init tangleAndRead;
           inherit (config) defaultEntangledToml;
-          minimalFlake = { src, sourceDir ? ".english.lit.md", pkgs ? nixpkgs.legacyPackages.${system} }:
+          minimalFlake = { src, sourceDir ? null, pkgs ? nixpkgs.legacyPackages.${system} }:
             init { inherit pkgs src sourceDir; ignoreLiterateGitSubmodules = true; };
         };
 
@@ -124,6 +124,8 @@ After the IFD-tangle, every `.nix` under `lib/` is in the store. The bootstrap i
 
 The `ignoreLiterateGitSubmodules` parameter is mandatory — no default. The flag declares what happens when LSMW finds nested git repositories (registered submodules or any directory containing `.git`) inside `src`. `true` means nested repos are foreign LSMW projects whose `.lit.md` files belong to those projects; LSMW will not tangle them here. `false` means the consumer accepts responsibility for resolving the tangling collisions and ownership questions that arise when one LSMW project literates over another. Making it required prevents the silent default that conflates two genuinely different intents.
 
+`sourceDir` defaults to auto-detection: when the consumer doesn't pass one, `init` picks the first of `config.sourceDirCandidates` that actually exists in `src`, falling back to `.english.lit.md`. A consumer who names their literate directory any of the conventional names never has to say so.
+
 ```{.nix file=lib/init.nix}
 { lib, pkgs, config, pipeline, checksLib, devshellLib }:
 rec {
@@ -133,7 +135,7 @@ rec {
     system ? "x86_64-linux",
     postTangle ? [ ],
     until ? null,
-    sourceDir ? ".english.lit.md",
+    sourceDir ? null,
     enforceDirectoryMatch ? false,
     allowRootGitignore ? false,
     minProseLines ? 3,
@@ -141,8 +143,12 @@ rec {
     ignoreLiterateGitSubmodules
   }:
     let
+      resolvedSourceDir =
+        if sourceDir != null then sourceDir
+        else lib.findFirst (d: builtins.pathExists "${src}/${d}") ".english.lit.md" config.sourceDirCandidates;
       verified = checksLib.makeVerify {
-        inherit pkgs src sourceDir enforceDirectoryMatch allowRootGitignore;
+        inherit pkgs src enforceDirectoryMatch allowRootGitignore;
+        sourceDir = resolvedSourceDir;
         inherit minProseLines maxBlockLength;
         inherit postTangle until;
       };
@@ -273,7 +279,7 @@ Every verb invocation acquires an exclusive `flock` on `${vault}/.lsmw.lock` and
 set -eu
 source_dir="''${LSMW_SOURCE_DIR:-}"
 if [ -z "$source_dir" ]; then
-  for d in .english.lit.md literate.lit.md literate.lit.mdx literate; do
+  for d in ${lib.concatStringsSep " " config.sourceDirCandidates}; do
     [ -d "$d" ] && source_dir="$d" && break
   done
 fi
@@ -315,7 +321,7 @@ HOOK
         default = verified.default;
         literate-verified = verified.default;
         tangled = verified.tangled;
-        web-wiki = pipeline.buildWebWiki { inherit pkgs src; litSourceDir = sourceDir; };
+        web-wiki = pipeline.buildWebWiki { inherit pkgs src; litSourceDir = resolvedSourceDir; };
         inherit cli mvVerb rmVerb todoVerb createVerb writeVerb;
       };
       devShells.${system}.default = devshellLib.mkDevShell {

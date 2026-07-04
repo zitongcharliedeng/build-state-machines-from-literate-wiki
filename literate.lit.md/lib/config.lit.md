@@ -9,6 +9,8 @@ This module answers one question: what are the defaults? Every consumer of liter
 
 Rather than copy these values into every flake that imports this library, they live here once. `lib/config.nix` is imported by `flake.nix` and passed to [[lib/devshell]] as its `config` argument.
 
+`sourceDirCandidates` is the single answer to "where does literate source live". Consumers who don't pass `sourceDir` get auto-detection: `init` picks the first candidate that exists in `src`, the devshell derives its auto-tangle globs from the same list, and the `install-hooks` pre-commit hook probes the same names. One list, three consumers, no drift.
+
 ## Why a separate module rather than inline in flake.nix?
 
 `flake.nix` is the composition layer. It wires inputs to outputs. When the defaults for `entangled.toml` or the toolchain resolution helpers live directly in `flake.nix`, there is no way for a consumer to import just the defaults without importing the full flake machinery. Extracting them here makes the library usable as a plain nix module — `import ./lib/config.nix { lib = nixpkgs.lib; entangledInput = inputs.entangled; }` — without pulling in any derivation-building logic.
@@ -84,6 +86,7 @@ in
 {
   inherit defaultEntangledLanguages;
   name = "lsmw";
+  sourceDirCandidates = [ ".english.lit.md" "literate.lit.md" "literate.lit.mdx" "literate" ];
 
   defaultEntangledToml = ''
     version = "2.0"

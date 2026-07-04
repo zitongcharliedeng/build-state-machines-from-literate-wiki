@@ -1,4 +1,4 @@
 {
-  inputs.lsmw.url = "github:zitongcharliedeng/build-state-machines-from-literate-wiki/dev";
+  inputs.lsmw.url = "github:zitongcharliedeng/build-state-machines-from-literate-wiki";
   outputs = { self, lsmw, ... }: lsmw.lib.minimalFlake { src = self; };
 }
