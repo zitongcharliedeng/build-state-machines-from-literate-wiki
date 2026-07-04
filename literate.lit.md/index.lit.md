@@ -11,6 +11,21 @@ This is my build tool. Every project I write — in any language — uses it. It
 
 It wraps Entangled the way `cargo` wraps `rustc`. Entangled does the tangling. This tool adds the opinions, the checks, and the nix integration.
 
+## Getting started
+
+Four commands, one API, nothing else:
+
+```
+mkdir myproject && cd myproject && git init
+nix flake init -t github:zitongcharliedeng/build-state-machines-from-literate-wiki
+git add -A
+nix run
+```
+
+`nix flake init` drops a two-line `flake.nix` and a starter page. Write your pages as `literate.lit.md/<name>.lit.md`, `git add` them (flakes only see tracked files), commit the generated `flake.lock`, and `nix run` builds the whole verified pipeline and serves the result on localhost:8000 (`nix run . -- 8931` picks another port; `nix build` if you only want the store path). The first build downloads the toolchain closure and takes a few minutes; after that it's cached.
+
+The one API is `lsmw.lib.minimalFlake { src = self; }`. Add `postTangle = [ "node --check main.js" ]` when you want linters or tests inside the pipeline. Drop down to `lsmw.lib.init` only when you need every knob — both are documented below, and everything else in this wiki is implementation.
+
 ## Default extension: `.lit.md`
 
 Plain markdown with fenced-code-block attributes (entangled syntax). Obsidian and mdbase index `.md` natively so the lsmw verbs (`mv`/`rm`/`todo`/`create`/`write`) work on the same vault and wikilinks resolve without configuration. `.lit.mdx` is also accepted — use it per-file for JSX/MDX content; the pipeline accepts both interchangeably.
