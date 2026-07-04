@@ -98,8 +98,8 @@ After the IFD-tangle, every `.nix` under `lib/` is in the store. The bootstrap i
         lib = {
           inherit init tangleAndRead;
           inherit (config) defaultEntangledToml;
-          minimalFlake = { src, sourceDir ? null, pkgs ? nixpkgs.legacyPackages.${system} }:
-            init { inherit pkgs src sourceDir; ignoreLiterateGitSubmodules = true; };
+          minimalFlake = { src, sourceDir ? null, postTangle ? [ ], pkgs ? nixpkgs.legacyPackages.${system} }:
+            init { inherit pkgs src sourceDir postTangle; ignoreLiterateGitSubmodules = true; };
         };
 
         templates.default = { path = ./templates/minimal; description = "${config.name} minimal consumer"; };
@@ -316,6 +316,18 @@ HOOK
           *) exit 1 ;;
         esac
       '';
+```
+
+## Deploy: `nix run` serves the verified product
+
+The pipeline used to end at "verified tree in the store" with nothing to open. `apps.default` closes that gap: a localhost-only static server rooted at the verified output, so `nix run` is the single build-and-launch command — the pipeline runs first because the server's path references it. Port defaults to 8000; pass another as the first argument (`nix run . -- 8931`). Dev/demo server, not a deployment target.
+
+```{.nix file=lib/init.nix}
+      serveApp = pkgs.writeShellApplication {
+        name = "${name}-serve";
+        runtimeInputs = [ (config.pythonFor pkgs) ];
+        text = ''exec python3 -m http.server "''${1:-8000}" --bind 127.0.0.1 --directory ${verified.default}'';
+      };
     in {
       packages.${system} = {
         default = verified.default;
@@ -324,6 +336,7 @@ HOOK
         web-wiki = pipeline.buildWebWiki { inherit pkgs src; litSourceDir = resolvedSourceDir; };
         inherit cli mvVerb rmVerb todoVerb createVerb writeVerb;
       };
+      apps.${system}.default = { type = "app"; program = "${serveApp}/bin/${name}-serve"; };
       devShells.${system}.default = devshellLib.mkDevShell {
         inherit pkgs;
         extraPackages = [ cli ];

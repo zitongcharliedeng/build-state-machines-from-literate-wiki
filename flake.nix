@@ -75,8 +75,8 @@ TOML
         lib = {
           inherit init tangleAndRead;
           inherit (config) defaultEntangledToml;
-          minimalFlake = { src, sourceDir ? null, pkgs ? nixpkgs.legacyPackages.${system} }:
-            init { inherit pkgs src sourceDir; ignoreLiterateGitSubmodules = true; };
+          minimalFlake = { src, sourceDir ? null, postTangle ? [ ], pkgs ? nixpkgs.legacyPackages.${system} }:
+            init { inherit pkgs src sourceDir postTangle; ignoreLiterateGitSubmodules = true; };
         };
 
         templates.default = { path = ./templates/minimal; description = "${config.name} minimal consumer"; };

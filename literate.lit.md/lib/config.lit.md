@@ -33,6 +33,11 @@ let
     comment = { open = "// ~~ " }
 
     [[languages]]
+    name = "JavaScript"
+    identifiers = ["js", "jsx", "javascript"]
+    comment = { open = "// ~~ " }
+
+    [[languages]]
     name = "Nix"
     identifiers = ["nix"]
     comment = { open = "# ~~ " }

@@ -17,19 +17,30 @@ Plain markdown with fenced-code-block attributes (entangled syntax). Obsidian an
 
 ## What it does
 
-One function: `lib.init`. A consumer project adds this flake as an input, calls `init`, and gets back packages. `nix build` runs the full escalating pipeline. That is the entire consumer interface.
+Start from the template — `nix flake init -t github:zitongcharliedeng/build-state-machines-from-literate-wiki` — and the whole consumer flake is one call:
 
 ```
-inputs.literate-state-machine-wiki.url = "github:zitongcharliedeng/build-state-machines-from-literate-wiki";
-
-# in outputs:
-literate-state-machine-wiki.lib.init { pkgs, src, linters, tests, ... }
-# returns: { packages }
-#   packages.default = verified tangled output (the product)
-#   packages.tangled = raw tangle (escape hatch for debugging)
+inputs.lsmw.url = "github:zitongcharliedeng/build-state-machines-from-literate-wiki";
+outputs = { self, lsmw, ... }: lsmw.lib.minimalFlake { src = self; };
 ```
 
-`literate-state-machine-wiki build` is the one command. It runs the escalating pipeline, fails early at the first broken stage, and produces verified output with chmod 444. The command is available in the devshell that `lib.init` provides.
+`nix build` runs the full escalating pipeline and fails early at the first broken stage. `nix run` serves the verified result on localhost (default port 8000; `nix run . -- 8931` to pick another). `minimalFlake` optionally takes `sourceDir` (default: auto-detected — `.english.lit.md`, `literate.lit.md`, `literate.lit.mdx`, or `literate`, first that exists in `src`), `postTangle` (an ordered list of commands — your linters and tests — run on the tangled tree), and `pkgs`.
+
+`minimalFlake` is one call to `lib.init`, the full-control entry point:
+
+```
+lsmw.lib.init {
+  pkgs, src,
+  postTangle ? [ ],            # lint/test hooks, run in order on the tangled tree
+  sourceDir ? auto-detected,
+  until ? null,                # truncate the pipeline at a named stage
+  minProseLines ? 3, maxBlockLength ? 50,
+  enforceDirectoryMatch ? false, allowRootGitignore ? false,
+  ignoreLiterateGitSubmodules  # mandatory, no default - your stance on nested git repos
+}
+```
+
+Both return a flake-shaped attrset you can `//`-merge extra outputs into: `packages` (`default` = the verified tangled tree, chmod 444 — the whole project tree, not one file; `tangled` = raw tangle escape hatch for debugging), `apps.default` (the localhost server behind `nix run`), and `devShells.default` (entangled on PATH, auto-tangle on entry, the `lsmw` CLI).
 
 ## What it enforces
 
@@ -37,9 +48,24 @@ Five stages, four gates. Each stage is a nix derivation depending on the previou
 
 1. **Pre-tangle checks** — literate structure validation (annotations, prose density, no invisible blocks). Operates on `.lit.md` source, not generated code. Water model: all violations collected, shown at once.
 2. **Tangle** — Entangled extracts code from `.lit.md` (hidden, consumers never see it). Only runs if pre-checks pass.
-3. **Lint** — consumer's linters run on the tangled tree (`tsc`, `eslint`, `ast-grep` — whatever the language needs). Pass them as the `linters` argument. Water model. Only runs if tangle succeeds.
-4. **Test** — consumer's tests run on the tangled tree (playwright, vitest, nix eval — whatever verifies correctness). Pass them as the `tests` argument. Water model. Only runs if linting passes.
+3. **Lint** — consumer's linters run on the tangled tree (`tsc`, `eslint`, `ast-grep` — whatever the language needs). These are your `postTangle` hooks. Water model. Only runs if tangle succeeds.
+4. **Test** — consumer's tests run on the tangled tree (playwright, vitest, nix eval — whatever verifies correctness). Also `postTangle` hooks, ordered after the linters. Water model. Only runs if linting passes.
 5. **Install** — tangled targets extracted to nix store with chmod 444. Only runs if all previous stages pass.
+
+## Authoring rules the pre-tangle gate enforces
+
+Learn these before your first build fails on them:
+
+- at least 3 prose lines per `.lit.md`, and prose must precede the first code block — the explanation is not optional
+- code blocks are capped at 50 lines; split long code into several blocks with the same `file=` target — same-target blocks concatenate in document order across the page, which is also how you assemble a module from explained pieces
+- no `//` or `/* */` comment lines inside code blocks — explanation belongs in the prose (the check is language-blind, so this applies to every C-family language including JavaScript)
+- no root `.gitignore` — generated files live only in the nix store, so a tree-local ignore list means the discipline already broke
+
+## Two nix gotchas
+
+The library bootstraps itself by tangling at eval time (import-from-derivation). `nix build` and `nix run` just work; introspection commands like `nix flake show` on the library need `--option allow-import-from-derivation true`.
+
+Flakes only see git-tracked files: `git add` every new literate page before building, or nix silently builds the tree without it.
 
 ## How it works
 
