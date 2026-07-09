@@ -1,5 +1,4 @@
 ---
-title: Nix Checks Module
 description: All validation logic for literate-state-machine-wiki — pre-tangle checks, post-tangle checks, structural integrity checks, and the makeChecks public API
 tags: [nix, checks, validation, module]
 ---
@@ -12,24 +11,41 @@ This module owns all validation logic for literate-state-machine-wiki projects, 
 
 The module uses `rec` so helpers can reference each other by name without argument threading.
 
-```{.nix file=checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
-# ~~ This file is generated from literate.lit.mdx/nix/checks.lit.mdx
+```{.nix file=lib/checks.nix}
 { lib, config, pipeline }:
 rec {
 ```
 
+## TEST_IMPLEMENTATION hook
+
+`makeTestImplementationHook` is the first v2-shaped contract living inside LSMW v1. It returns a normal `postTangle` hook, so consumers still use `literate-state-machine-wiki build` and the existing hook pipeline. The first behavior is intentionally tiny: if the implementation artifact is absent from the tangled execution context, emit `TEST_IMPLEMENTATION: missing _impl ...` and fail.
+
+```{.nix file=lib/checks.nix}
+  makeTestImplementationHook = { impl }:
+    {
+      name = "TEST_IMPLEMENTATION";
+      command = ''
+        if [ ! -e ${lib.escapeShellArg impl} ]; then
+          echo "TEST_IMPLEMENTATION: missing _impl ${impl}" >&2
+          exit 1
+        fi
+      '';
+    };
+```
+
 ## Pre-tangle checks
 
-Two checks run before Entangled writes output: `literate-structure` rejects code blocks that start with `//`/`/*`/`*/` (explanations belong in prose) and enforces minimum prose density; `input-title-tooltips` rejects `<input title=>` in favor of accessible info-button dialogs.
+Three checks run before Entangled writes output. `literate-structure` walks every `.lit.md`/`.lit.mdx` and enforces eight invariants: (1) code blocks contain no comment lines — explanations belong in prose; what counts as a comment comes from the block's language via `config.commentTokenFor` (the same one table that renders `entangled.toml`, so `//` flags in JS but not in nix where it's the merge operator), with shebangs exempt; (2) blocks ≤ `maxBlockLength` lines (default 50); (3) ≥ `minProseLines` prose lines per file (default 3); (4) prose precedes the first code block; (5) `as-a-real-non-nix-store-file=` annotations warn (these are bootstrap escapes); (6) `file=` paths are relative, not absolute; (7) optional `enforceDirectoryMatch` rejects `file=` paths that don't match the source dir; (8) no `.md`/`.mdx` files outside the literate convention. `input-title-tooltips` rejects `<input title=>` in favor of accessible info-button dialogs. `no-root-gitignore` rejects a project-root `.gitignore` (and one inside `sourceDir`) because artifacts belong in the nix store, not in a tree-local ignore list — a tracked `.gitignore` signals the literate discipline has been broken upstream (node_modules/dist/result leaked into the tree). Rare opt-out: `allowRootGitignore = true`.
 
-```{.nix file=checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+```{.nix file=lib/checks.nix}
+
   mkDefaultPreTangleChecks = {
-    sourceDir ? "literate",
-    forbidTsComments ? true,
+    sourceDir ? ".english.lit.md",
     tooltipCheckFile ? "literate/index.lit.md",
+    enforceDirectoryMatch ? false,
     minProseLines ? 3,
     maxBlockLength ? 50,
-    enforceDirectoryMatch ? false
+    allowRootGitignore ? false
   }:
     lib.flatten [
       [{
@@ -41,7 +57,8 @@ import os, re, sys
 source_dir = ${builtins.toJSON sourceDir}
 min_prose = ${toString minProseLines}
 max_block = ${toString maxBlockLength}
-forbid_comments = ${if forbidTsComments then "True" else "False"}
+forbid_comments = True
+comment_tokens = ${builtins.toJSON config.commentTokenFor}
 enforce_dirs = ${if enforceDirectoryMatch then "True" else "False"}
 errors = 0
 violations = 0
@@ -58,6 +75,7 @@ for root, _, files in os.walk(source_dir):
         in_block = False
         block_start = 0
         block_lines = 0
+        block_lang = ""
         has_annotation = False
         prose_lines = 0
         first_block = False
@@ -71,13 +89,14 @@ for root, _, files in os.walk(source_dir):
                 in_block = True
                 block_start = num
                 block_lines = 0
+                lang_match = re.search(r"\{\s*\.([A-Za-z0-9]+)", trimmed)
+                block_lang = lang_match.group(1).lower() if lang_match else ""
                 has_annotation = "file=" in trimmed
 
                 if not first_block and prose_lines > 0:
                     has_intro = True
                 first_block = True
 
-                # Warn on bootstrap files (as-a-real-non-nix-store-file)
                 if "as-a-real-non-nix-store-file=" in trimmed:
                     reason_match = re.search(r'as-a-real-non-nix-store-file="([^"]*)"', trimmed)
                     reason = reason_match.group(1) if reason_match else "no reason given"
@@ -85,7 +104,6 @@ for root, _, files in os.walk(source_dir):
                     print(f"    This file exists outside the nix store: {reason}")
                     violations += 1
 
-                # Warn on absolute file= paths (antipattern — prefer relative)
                 if has_annotation:
                     file_match = re.search(r'file=([^\s}"]+)', trimmed)
                     if file_match:
@@ -118,10 +136,11 @@ for root, _, files in os.walk(source_dir):
 
             if in_block:
                 block_lines += 1
-                if forbid_comments and re.match(r"^\s*(//|/\*|\*/)", line):
+                token = comment_tokens.get(block_lang, "").strip()
+                if forbid_comments and token and trimmed.startswith(token) and not trimmed.startswith("#!"):
                     if "http://" not in line and "https://" not in line:
                         print(f"  error core/no-comments-in-blocks: {path}:{num}")
-                        print(f"    Comments belong in prose between blocks")
+                        print(f"    A leading '{token}' comment belongs in prose between blocks")
                         errors += 1
             else:
                 if len(trimmed) > 0 and not trimmed.startswith("#") and not trimmed.startswith("---"):
@@ -143,11 +162,11 @@ for root, _, files in os.walk(source_dir):
             if not (name.endswith(".lit.mdx") or name.endswith(".lit.md")):
                 path = os.path.join(root, name)
                 print(f"  error core/non-literate-file: {path}")
-                print(f"    File must end in .lit.mdx to be processed. Rename it.")
+                print(f"    File must end in .lit.md or .lit.mdx to be processed. Rename it.")
                 errors += 1
 
 if errors > 0:
-    print(f"[literate-state-machine-wiki] {errors} violations")
+    print(f"[${config.name}] {errors} violations")
     sys.exit(1)
 LITCHECK
         '';
@@ -156,8 +175,32 @@ LITCHECK
         name = "input-title-tooltips";
         command = ''
           if grep -q '<input[^>]*title="' ${lib.escapeShellArg tooltipCheckFile} 2>/dev/null; then
-            echo "[literate-state-machine-wiki] ERROR: <input> elements with title= tooltips found."
+            echo "[${config.name}] ERROR: <input> elements with title= tooltips found."
             grep -n '<input[^>]*title="' ${lib.escapeShellArg tooltipCheckFile} | head -10
+            exit 1
+          fi
+        '';
+      })
+      (lib.optional (!allowRootGitignore) {
+        name = "no-root-gitignore";
+        command = ''
+          offenders=""
+          [ -f .gitignore ] && offenders="$offenders .gitignore"
+          [ -f ${lib.escapeShellArg sourceDir}/.gitignore ] && offenders="$offenders ${sourceDir}/.gitignore"
+          if [ -n "$offenders" ]; then
+            echo "[${config.name}] ERROR: .gitignore found in project tree:$offenders"
+            echo ""
+            echo "  Consumer projects should not carry a .gitignore."
+            echo "  Artifacts belong in the nix store, not in an ignore list — a tracked"
+            echo "  .gitignore means the literate discipline has been broken upstream"
+            echo "  (node_modules/dist/result/etc. have leaked into the worktree)."
+            echo ""
+            echo "  Fixes:"
+            echo "    - build with 'nix build --no-link' so 'result' never lands"
+            echo "    - keep node_modules in the nix store"
+            echo "    - for truly local-only excludes, use .git/info/exclude (uncommitted)"
+            echo ""
+            echo "  If you are sure you need one, pass 'allowRootGitignore = true' to init."
             exit 1
           fi
         '';
@@ -169,43 +212,33 @@ LITCHECK
 
 No default post-tangle checks. Block-length is already checked pre-tangle with configurable `maxBlockLength`.
 
-```{.nix file=checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
-  mkDefaultPostTangleChecks = {
-    sourceDir ? "literate"
-  }:
-    [ ];
+```{.nix file=lib/checks.nix}
+  mkDefaultPostTangleChecks = [ ];
 ```
 
 ## Check execution helpers
 
 `collectNativeBuildInputs` flattens per-check dependency lists; `renderChecks` builds the bash script that runs them, wrapping warn-mode checks in `set +e` so they report without aborting.
 
-```{.nix file=checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+```{.nix file=lib/checks.nix}
   collectNativeBuildInputs = checks:
     builtins.concatLists (map (check: check.nativeBuildInputs or [ ]) checks);
 
-  renderChecks = phase: checks:
+  renderChecks = phase: checks: let tag = "[${config.name}:${phase}]"; in
     builtins.concatStringsSep "\n" (map
-      (check:
-        if (check.mode or "error") == "warn" then ''
-          echo "[literate-state-machine-wiki:${phase}] ${check.description or check.name}"
-          set +e
-          (
-            cd ${lib.escapeShellArg (check.cwd or ".")}
-            ${check.command}
-          )
-          status=$?
-          set -e
-          if [ "$status" -ne 0 ]; then
-            echo "[literate-state-machine-wiki:${phase}] WARNING: ${check.name} failed with exit code $status"
-          fi
-        '' else ''
-          echo "[literate-state-machine-wiki:${phase}] ${check.description or check.name}"
-          (
-            cd ${lib.escapeShellArg (check.cwd or ".")}
-            ${check.command}
-          )
-        '')
+      (check: let
+        body = ''( set -euo pipefail; cd ${lib.escapeShellArg (check.cwd or ".")}; ${check.command} )'';
+      in ''
+        echo "${tag} ${check.description or check.name}"
+      '' + (if (check.mode or "error") == "warn" then ''
+        set +e
+        ${body}
+        status=$?
+        set -e
+        if [ "$status" -ne 0 ]; then
+          echo "${tag} WARNING: ${check.name} failed with exit code $status"
+        fi
+      '' else body))
       checks);
 ```
 
@@ -213,45 +246,41 @@ No default post-tangle checks. Block-length is already checked pre-tangle with c
 
 `renderChecksWaterModel` runs ALL checks in a stage, collects all violations, and shows everything at once. Only fails at the end if any error-mode check failed. This is the O(n) water model — contrast with `renderChecks` which aborts at the first error.
 
-```{.nix file=checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
-  renderChecksWaterModel = phase: checks: ''
-    _lsmw_errors=0
-    _lsmw_passed=""
+```{.nix file=lib/checks.nix}
+  renderChecksWaterModel = phase: checks: let tag = "[${config.name}:${phase}]"; var = "_${config.name}"; in ''
+    ${var}_errors=0
+    ${var}_passed=""
     ${builtins.concatStringsSep "\n" (map
       (check:
         let
           needs = check.needs or [];
           needsCheck = if needs == [] then "true" else
-            builtins.concatStringsSep " && " (map (n: ''echo "$_lsmw_passed" | grep -qw "${n}"'') needs);
+            builtins.concatStringsSep " && " (map (n: ''echo "''$${var}_passed" | grep -qw "${n}"'') needs);
         in ''
-        # Hook: ${check.name} ${if needs != [] then "needs: ${builtins.concatStringsSep ", " needs}" else ""}
         if ${needsCheck}; then
-          echo "[literate-state-machine-wiki:${phase}] ${check.description or check.name}"
+          echo "${tag} ${check.description or check.name}"
           set +e
-          (
-            cd ${lib.escapeShellArg (check.cwd or ".")}
-            ${check.command}
-          )
-          _lsmw_status=$?
+          ( set -euo pipefail; cd ${lib.escapeShellArg (check.cwd or ".")}; ${check.command} )
+          ${var}_status=$?
           set -e
-          if [ "$_lsmw_status" -ne 0 ]; then
+          if [ "''$${var}_status" -ne 0 ]; then
             ${if (check.mode or "error") == "warn" then ''
-              echo "[literate-state-machine-wiki:${phase}] WARNING: ${check.name} failed"
-              _lsmw_passed="$_lsmw_passed ${check.name}"
+              echo "${tag} WARNING: ${check.name} failed"
+              ${var}_passed="''$${var}_passed ${check.name}"
             '' else ''
-              echo "[literate-state-machine-wiki:${phase}] ERROR: ${check.name} failed"
-              _lsmw_errors=$((_lsmw_errors + 1))
+              echo "${tag} ERROR: ${check.name} failed"
+              ${var}_errors=$((${var}_errors + 1))
             ''}
           else
-            _lsmw_passed="$_lsmw_passed ${check.name}"
+            ${var}_passed="''$${var}_passed ${check.name}"
           fi
         else
-          echo "[literate-state-machine-wiki:${phase}] SKIPPED: ${check.name} (needs not met: ${builtins.concatStringsSep ", " needs})"
+          echo "${tag} SKIPPED: ${check.name} (needs not met: ${builtins.concatStringsSep ", " needs})"
         fi
       '')
       checks)}
-    if [ "$_lsmw_errors" -gt 0 ]; then
-      echo "[literate-state-machine-wiki:${phase}] $_lsmw_errors error(s)"
+    if [ "''$${var}_errors" -gt 0 ]; then
+      echo "${tag} ''$${var}_errors error(s)"
       exit 1
     fi
   '';
@@ -261,7 +290,7 @@ No default post-tangle checks. Block-length is already checked pre-tangle with c
 
 `mkProjectCheck` wraps a single check in a nix derivation, making each custom check independently addressable and cacheable as `nix build .#checks.x86_64-linux.post-my-check`.
 
-```{.nix file=checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+```{.nix file=lib/checks.nix}
   mkProjectCheck = {
     pkgs, src, name, command,
     nativeBuildInputs ? [ ],
@@ -283,7 +312,7 @@ No default post-tangle checks. Block-length is already checked pre-tangle with c
 
 `checkIdempotent` runs tangle twice and diffs the results (any difference is a hard failure); `checkImmutable` asserts every output file has permissions `444`.
 
-```{.nix file=checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+```{.nix file=lib/checks.nix}
   checkIdempotent = {
     src, name ? "idempotent-check", pkgs,
  stripGeneratedMarkers ? true
@@ -316,7 +345,7 @@ No default post-tangle checks. Block-length is already checked pre-tangle with c
 
 Each check in `preTangleChecks` / `postTangleChecks` gets its own named derivation prefixed `pre-` or `post-`, with warn-mode checks exiting 0 so the derivation succeeds and caches.
 
-```{.nix file=checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+```{.nix file=lib/checks.nix}
   makeNamedChecks = {
     phase, checks, pkgs, src, stripGeneratedMarkers
   }:
@@ -337,7 +366,7 @@ Each check in `preTangleChecks` / `postTangleChecks` gets its own named derivati
               set -e
               if [ "$status" -ne 0 ]; then
                 if [ "${check.mode or "error"}" = "warn" ]; then
-                  echo "[literate-state-machine-wiki:${phase}] WARNING: ${attrName} failed with exit code $status"
+                  echo "[${config.name}:${phase}] WARNING: ${attrName} failed with exit code $status"
                 else
                   exit "$status"
                 fi
@@ -354,34 +383,32 @@ Each check in `preTangleChecks` / `postTangleChecks` gets its own named derivati
 
 `makeChecks` is used by the library's own flake for self-testing via `nix flake check`. Consumers call `makeVerify` instead — see below. Produces four standard derivations (`tangle-and-check`, `tangle-succeeds`, `tangle-idempotent`, `tangle-immutable`) plus one named derivation per entry in `preTangleChecks` / `postTangleChecks`.
 
-```{.nix file=checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+```{.nix file=lib/checks.nix}
   makeChecks = {
     src, pkgs,
-    sourceDir ? "literate",
-    forbidTsComments ? true,
-    tooltipCheckFile ? "literate/index.lit.md",
-    minProseLines ? 3,
-    maxBlockLength ? 50,
+    sourceDir ? ".english.lit.md",
+    tooltipCheckFile ? null,
     enforceDirectoryMatch ? false,
     stripGeneratedMarkers ? true,
     preTangleChecks ? [ ],
-    postTangleChecks ? [ ]
+    postTangleChecks ? [ ],
+    allowRootGitignore ? false
   }:
     let
-      allPreChecks = (mkDefaultPreTangleChecks { inherit sourceDir forbidTsComments tooltipCheckFile minProseLines maxBlockLength enforceDirectoryMatch; }) ++ preTangleChecks;
-      allPostChecks = (mkDefaultPostTangleChecks { inherit sourceDir; }) ++ postTangleChecks;
-      tangled = pipeline.tangle { inherit src pkgs stripGeneratedMarkers; };
+      allPreChecks = (mkDefaultPreTangleChecks { inherit sourceDir tooltipCheckFile enforceDirectoryMatch allowRootGitignore; }) ++ preTangleChecks;
+      allPostChecks = mkDefaultPostTangleChecks ++ postTangleChecks;
+      tangled = pipeline.tangle { inherit src pkgs sourceDir stripGeneratedMarkers; };
     in {
-      tangle-and-check = pkgs.runCommand "literate-state-machine-wiki-tangle-and-check" {
+      tangle-and-check = pkgs.runCommand "${config.name}-tangle-and-check" {
         nativeBuildInputs =
           [ (config.entangledFor pkgs) (config.pythonFor pkgs) ]
           ++ collectNativeBuildInputs allPreChecks
           ++ collectNativeBuildInputs allPostChecks;
       } ''
         set -euo pipefail
-        ${pipeline.projectSetup { inherit src; }}
+        ${pipeline.projectSetup { inherit src sourceDir; }}
         ${renderChecks "pre" allPreChecks}
-        ${pipeline.tangleProject { inherit stripGeneratedMarkers; }}
+        ${pipeline.tangleProject { inherit sourceDir stripGeneratedMarkers; }}
         ${renderChecks "post" allPostChecks}
         touch "$out"
       '';
@@ -395,6 +422,48 @@ Each check in `preTangleChecks` / `postTangleChecks` gets its own named derivati
       phase = "post"; checks = postTangleChecks;
       inherit pkgs src stripGeneratedMarkers;
     };
+```
+
+## Hook DAG helpers — validateNeeds, resolveClosure, filterUntil
+
+These pure functions operate on the `postTangle` hook list. They are extracted to top level so they can be unit-tested directly (see `tests/unit.lit.md`). `makeVerify` calls them internally.
+
+**`validateNeeds`** — walks the hook list in declaration order, asserting every hook's `needs` list references hooks that appear **earlier**. This enforces topological order at eval time, so consumers get a clear error at `nix eval` rather than a cryptic failure during build. A hook that references a non-existent name, or a hook that appears after its dependents, throws with the offending hook name and the missing names.
+
+**`resolveClosure`** — given a target hook name and a `hooksByName` attrset, returns the transitive closure of `needs` as a list, including the target itself. Uses a `visited` accumulator to terminate on cycles (a cycle would short-circuit when it re-encounters a visited node). Order within the closure is not preserved — callers should filter the original ordered list to recover ordering.
+
+**`filterUntil`** — the public entry point used by `until = "hookname"`. When `until == null`, returns the full hook list unchanged. When set, asserts the target hook exists (clear error if not), resolves its transitive closure, and filters the original list to that closure while preserving declaration order.
+
+```{.nix file=lib/checks.nix}
+  validateNeeds = hooks:
+    let
+      go = seen: remaining:
+        if remaining == [] then true
+        else let h = builtins.head remaining; rest = builtins.tail remaining;
+          needs = h.needs or [];
+          missing = builtins.filter (n: ! builtins.elem n seen) needs;
+        in if missing != [] then
+          builtins.throw "Hook '${h.name}' needs [${builtins.concatStringsSep ", " missing}] but they appear after it or don't exist. Reorder your postTangle list."
+        else go (seen ++ [h.name]) rest;
+    in go [] hooks;
+
+  resolveClosure = { hooksByName, name, visited ? [] }:
+    if builtins.elem name visited then visited
+    else let
+      hook = hooksByName.${name};
+      needs = hook.needs or [];
+      withSelf = visited ++ [name];
+    in builtins.foldl' (acc: n: resolveClosure { inherit hooksByName; name = n; visited = acc; }) withSelf needs;
+
+  filterUntil = { postTangle, until }:
+    if until == null then postTangle else
+    let
+      hooksByName = builtins.listToAttrs (map (h: { name = h.name; value = h; }) postTangle);
+      _untilExists = if !(builtins.hasAttr until hooksByName) then
+        builtins.throw "until='${until}' does not name a postTangle hook. Available: ${builtins.concatStringsSep ", " (map (h: h.name) postTangle)}"
+      else true;
+      needed = assert _untilExists; resolveClosure { inherit hooksByName; name = until; };
+    in builtins.filter (h: builtins.elem h.name needed) postTangle;
 ```
 
 ## makeVerify — the consumer product
@@ -411,25 +480,27 @@ Five stages, four gates:
 4. `tested` — consumer tests run on the tree (water model)
 5. `default` — extracts tangled targets with chmod 444 into nix store
 
-```{.nix file=checks.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+`postTangle` entries may be plain command strings — `makeVerify` normalizes each to a hook named `post-tangle-N` by list position. The hook stage always carries Node and Python on PATH (the same toolchain the tangle stage and devshell already use), so the common "syntax-check what I just tangled" case needs no `pkgs` handle; anything beyond those two is declared per-hook via `nativeBuildInputs`. The default output is the full tree including whatever the hooks produced — a `dist/` from vite, coverage reports — hook artifacts ship in the same store path.
+
+```{.nix file=lib/checks.nix}
   makeVerify = {
     src, pkgs,
-    sourceDir ? "literate.lit.mdx",
-    forbidTsComments ? true,
+    sourceDir ? ".english.lit.md",
     tooltipCheckFile ? null,
-    minProseLines ? 3,
-    maxBlockLength ? 50,
     enforceDirectoryMatch ? false,
     stripGeneratedMarkers ? true,
     postTangle ? [],
-    until ? null
+    until ? null,
+    allowRootGitignore ? false,
+    minProseLines ? 3,
+    maxBlockLength ? 50
   }:
     let
       allPreChecks = mkDefaultPreTangleChecks {
-        inherit sourceDir forbidTsComments tooltipCheckFile minProseLines maxBlockLength enforceDirectoryMatch;
+        inherit sourceDir tooltipCheckFile enforceDirectoryMatch allowRootGitignore;
+        inherit minProseLines maxBlockLength;
       };
 
-      # Stage 1: Pre-check — validates literate structure
       preChecked = pkgs.runCommand "literate-pre-checked" {
         nativeBuildInputs = [ (config.pythonFor pkgs) ];
       } ''
@@ -441,7 +512,6 @@ Five stages, four gates:
         ${renderChecksWaterModel "pre" allPreChecks}
       '';
 
-      # Stage 2: Tangle — entangled extracts code (depends on preChecked)
       tangledTree = pkgs.runCommand "literate-tangled-tree" {
         nativeBuildInputs = [ (config.entangledFor pkgs) (config.pythonFor pkgs) ];
       } ''
@@ -454,43 +524,19 @@ Five stages, four gates:
         cat > entangled.toml <<'TOML'
 ${config.defaultEntangledToml}
 TOML
-        ${pipeline.tangleProject { inherit stripGeneratedMarkers; }}
+        ${pipeline.tangleProject { inherit sourceDir stripGeneratedMarkers; }}
       '';
 
-      # Validate needs: every needs reference must name a hook that appears EARLIER in the list
-      _validateNeeds = hooks:
-        let
-          go = seen: remaining:
-            if remaining == [] then true
-            else let h = builtins.head remaining; rest = builtins.tail remaining;
-              needs = h.needs or [];
-              missing = builtins.filter (n: ! builtins.elem n seen) needs;
-            in if missing != [] then
-              builtins.throw "Hook '${h.name}' needs [${builtins.concatStringsSep ", " missing}] but they appear after it or don't exist. Reorder your postTangle list."
-            else go (seen ++ [h.name]) rest;
-          in go [] hooks;
-      _needsValid = _validateNeeds postTangle;
+      normalizedPostTangle = lib.imap1
+        (i: h: if builtins.isString h then { name = "post-tangle-${toString i}"; command = h; } else h)
+        postTangle;
+      _needsValid = validateNeeds normalizedPostTangle;
+      effectivePostTangle = filterUntil { postTangle = normalizedPostTangle; inherit until; };
 
-      # Filter postTangle by --until: resolve transitive deps of target hook, keep only those
-      effectivePostTangle = if until == null then postTangle else
-        let
-          hooksByName = builtins.listToAttrs (map (h: { name = h.name; value = h; }) postTangle);
-          # Resolve transitive closure of needs for a given hook name
-          closure = name: visited:
-            if builtins.elem name visited then visited
-            else let
-              hook = hooksByName.${name};
-              needs = hook.needs or [];
-              withDeps = builtins.foldl' (acc: n: closure n acc) (visited ++ [name]) needs;
-            in withDeps;
-          needed = closure until [];
-        in builtins.filter (h: builtins.elem h.name needed) postTangle;
-
-      # Stage 3: Post-tangle hooks — consumer's commands, water model (depends on tangledTree)
-      # Output: the full tree WITH any hook artifacts (e.g. dist/ from vite build)
       postTangled = assert _needsValid; if effectivePostTangle == [] then tangledTree else
         pkgs.runCommand "literate-post-tangled" {
-          nativeBuildInputs = collectNativeBuildInputs effectivePostTangle;
+          nativeBuildInputs = [ (config.nodejsFor pkgs) (config.pythonFor pkgs) ]
+            ++ collectNativeBuildInputs effectivePostTangle;
         } ''
           set -euo pipefail
           cp -r ${tangledTree}/. $out/
@@ -501,7 +547,7 @@ TOML
 
     in {
       default = postTangled;
-      tangled = pipeline.tangle { inherit src pkgs stripGeneratedMarkers; };
+      tangled = pipeline.tanglePerFile { inherit src pkgs sourceDir stripGeneratedMarkers; };
     };
 }
 ```

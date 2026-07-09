@@ -1,0 +1,333 @@
+---
+description: The core tangling pipeline — project setup, marker stripping, tangle execution, nix store installation, and local dev app
+tags: [nix, pipeline, tangle, module]
+---
+
+# Nix Pipeline Module
+
+This module copies sources into a build sandbox, runs Entangled, strips generated markers, installs outputs to the nix store, and builds the local dev tangle app.
+
+## Module signature
+```{.nix file=lib/pipeline.nix}
+{ lib, config }:
+rec {
+```
+## expandLocalFileTargets
+`file=.suffix` means "use this literate file's owner name, then append `.suffix`". For example, inside `foo.english.lit.md`, `file=.ts` expands to `foo.english.ts`; inside `foo.english.lit.md`, `file=.machine.ts` expands to `foo.english.machine.ts`.
+```{.nix file=lib/pipeline.nix}
+  expandLocalFileTargets = { sourceDir ? ".english.lit.md", only ? "" }: ''
+    LSMW_SOURCE_DIR=${lib.escapeShellArg sourceDir} LSMW_ONLY=${lib.escapeShellArg only} python3 - <<'PY'
+import os, re
+source_dir = os.environ["LSMW_SOURCE_DIR"].strip("/")
+only = os.environ["LSMW_ONLY"]
+
+def lit_files():
+    if only:
+        return [only]
+    found = []
+    for root, _, files in os.walk(source_dir if os.path.isdir(source_dir) else "."):
+        for name in files:
+            if name.endswith((".lit.md", ".lit.mdx")):
+                found.append(os.path.join(root, name))
+    return found
+
+def strip_lit_suffix(path):
+    for suffix in (".lit.md", ".lit.mdx"):
+        if path.endswith(suffix):
+            return path[:-len(suffix)]
+    return path
+
+def expand(path, target):
+    rel = path[2:] if path.startswith("./") else path
+    local = rel[len(source_dir) + 1:] if rel.startswith(source_dir + "/") else rel
+    owner = strip_lit_suffix(local)
+    owner_dir = os.path.dirname(owner)
+    if target.startswith("."):
+        return os.path.join(owner_dir, os.path.basename(owner) + target)
+    if "/" not in target:
+        return os.path.join(owner_dir, target)
+    return target
+
+def language_for(target):
+    ext = target.rsplit(".", 1)[-1]
+    return {"ts": "ts", "tsx": "tsx", "js": "js", "jsx": "jsx", "nix": "nix", "json": "json", "sh": "sh", "bash": "sh", "md": "md", "toml": "toml"}.get(ext, ext)
+
+def rewrite_line(path, match):
+    open_, attrs, close = match.group(1), match.group(2), match.group(3)
+    file_match = re.search(r'\bfile=([^ }\n]+)', attrs)
+    if not file_match:
+        return match.group(0)
+    expanded = expand(path, file_match.group(1))
+    attrs = attrs[:file_match.start(1)] + expanded + attrs[file_match.end(1):]
+    if not re.search(r'(^|\s)\.[A-Za-z0-9_+-]+(\s|$)', attrs):
+        attrs = "." + language_for(expanded) + " " + attrs.lstrip()
+    return open_ + attrs + close
+
+pattern = re.compile(r'(^```\{)([^}\n]*\bfile=[^}\n]*)(\})', re.MULTILINE)
+for path in lit_files():
+    with open(path, encoding="utf-8") as handle:
+        text = handle.read()
+    changed = pattern.sub(lambda m: rewrite_line(path, m), text)
+    if changed != text:
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(changed)
+PY
+  '';
+```
+## projectSetup
+`projectSetup` copies the source tree into `build/`, writes `entangled.toml` (so the consumer never needs one), expands local `file=.` targets, and deletes `.entangled/filedb.json` so Entangled cannot skip outputs by trusting a stale database.
+```{.nix file=lib/pipeline.nix}
+  projectSetup = { src, sourceDir ? ".english.lit.md" }: ''
+    mkdir -p build
+    cp -r ${src}/. build/
+    chmod -R u+w build
+    cd build
+
+    cat > entangled.toml << 'TOML'
+    ${config.defaultEntangledToml}
+    TOML
+
+    ${expandLocalFileTargets { inherit sourceDir; }}
+    rm -f .entangled/filedb.json
+  '';
+```
+## stripEntangledMarkers
+Removes `~~ ` prefix comments that Entangled writes into generated files, skipping `.entangled/`, `entangled.toml`, and `*.lit.md` sources.
+```{.nix file=lib/pipeline.nix}
+  stripEntangledMarkers = ''
+    find . \
+      -type f \
+      -not -path './.entangled/*' \
+      -not -name 'entangled.toml' \
+      -not -name '*.lit.md' \
+      -print0 | while IFS= read -r -d $'\0' file; do
+      chmod u+w "$file" 2>/dev/null || true
+      sed -i \
+        -e '/^\/\/ ~~ .*$/d' \
+        -e '/^# ~~ .*$/d' \
+        -e '/^<!-- ~~ .*-->$/d' \
+        -e '/^\/\* ~~ .* \*\/$/d' \
+        "$file"
+    done
+  '';
+```
+## tangleProject
+Runs `entangled tangle --force` (required in a nix sandbox — no interactive terminal), then optionally strips markers.
+```{.nix file=lib/pipeline.nix}
+  tangleProject = { stripGeneratedMarkers ? true, sourceDir ? ".english.lit.md" }: ''
+    ${expandLocalFileTargets { inherit sourceDir; }}
+    entangled tangle --force
+    ${lib.optionalString stripGeneratedMarkers stripEntangledMarkers}
+  '';
+```
+## installTargets
+Reads `.entangled/filedb.json` to discover tangled outputs, copies each into `$out` read-only, and fails loudly if the filedb or any declared target is missing.
+```{.nix file=lib/pipeline.nix}
+  installTargets = ''
+    mkdir -p "$out"
+    python3 - <<'PY'
+    import json, os, shutil, stat
+
+    filedb_path = os.path.join(os.getcwd(), ".entangled", "filedb.json")
+    if not os.path.exists(filedb_path):
+        raise SystemExit("ERROR: entangled did not produce .entangled/filedb.json")
+
+    with open(filedb_path, "r", encoding="utf-8") as handle:
+        data = json.load(handle)
+
+    targets = sorted(data.get("targets", []))
+    out_dir = os.environ["out"]
+
+    for rel_path in targets:
+        src_path = os.path.join(os.getcwd(), rel_path)
+        if not os.path.exists(src_path):
+            raise SystemExit(f"ERROR: missing tangled target: {rel_path}")
+        dest_path = os.path.join(out_dir, rel_path)
+        os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+        shutil.copy2(src_path, dest_path)
+        os.chmod(dest_path, stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
+    PY
+  '';
+```
+## tangle
+Composes `projectSetup`, `tangleProject`, and `installTargets` into a `pkgs.runCommand` derivation using binaries resolved by [[lib/config]].
+```{.nix file=lib/pipeline.nix}
+  tangle = {
+    src,
+    name ? "tangled",
+    pkgs,
+    stripGeneratedMarkers ? true,
+    sourceDir ? ".english.lit.md"
+  }:
+    pkgs.runCommand name {
+      nativeBuildInputs = [ (config.entangledFor pkgs) (config.pythonFor pkgs) ];
+    } ''
+      set -euo pipefail
+      ${projectSetup { inherit src sourceDir; }}
+      ${tangleProject { inherit stripGeneratedMarkers sourceDir; }}
+      ${installTargets}
+    '';
+```
+
+## enumerateLiterateFiles
+`enumerateLiterateFiles` walks `src` at eval time and returns a list of relative paths to every `.lit.mdx` and `.lit.md` file found under `sourceDir`. Used by `tanglePerFile` to build one derivation per literate source so a single-file edit invalidates only that file's tangle output, not the whole tree.
+```{.nix file=lib/pipeline.nix}
+  enumerateLiterateFiles = { src, sourceDir }:
+    let
+      root = "${src}/${sourceDir}";
+      walk = dir: relDir:
+        let
+          entries = builtins.readDir dir;
+          names = builtins.attrNames entries;
+          resolve = name:
+            let
+              kind = entries.${name};
+              absPath = "${dir}/${name}";
+              relPath = if relDir == "" then name else "${relDir}/${name}";
+            in
+              if kind == "directory" then walk absPath relPath
+              else if kind == "regular" && (lib.hasSuffix ".lit.mdx" name || lib.hasSuffix ".lit.md" name) then [ relPath ]
+              else [];
+        in builtins.concatLists (map resolve names);
+    in walk root "";
+```
+
+## tangleOneFile
+`tangleOneFile` produces a derivation that tangles a single `.lit.mdx` file. The `watch_list` in `entangled.toml` is narrowed to just that one file so entangled's `.entangled/filedb.json` lists only this file's outputs; `installTargets` then copies only those to `$out`.
+
+Isolation is load-bearing: the derivation input is the **single file** read via `builtins.path`, not the whole `src` tree. If we substituted `${src}/${relPath}` we would embed the whole-tree store path as a string, re-hashing every per-file derivation on any sibling edit. `builtins.path { path = src + "/${sourceDir}/${relPath}"; name = ...; }` copies exactly one file into the store with a hash that depends only on that file's bytes, so an edit to sibling A leaves sibling B's derivation invariant.
+```{.nix file=lib/pipeline.nix}
+  tangleOneFile = {
+    src,
+    sourceDir,
+    relPath,
+    pkgs,
+    stripGeneratedMarkers ? true
+  }:
+    let
+      safeName = lib.strings.sanitizeDerivationName "tangled-${relPath}";
+      sanitizedRelPath = lib.replaceStrings ["/" "."] ["-" "-"] relPath;
+      onePath = builtins.path {
+        path = src + "/${sourceDir}/${relPath}";
+        name = "litsrc-${sanitizedRelPath}";
+      };
+      watchEntry = "${sourceDir}/${relPath}";
+      dirRelPath = builtins.dirOf relPath;
+    in
+    pkgs.runCommand safeName {
+      nativeBuildInputs = [ (config.entangledFor pkgs) (config.pythonFor pkgs) ];
+      passthru = { inherit relPath; };
+    } ''
+      set -euo pipefail
+      mkdir -p build/${sourceDir}/${builtins.dirOf relPath}
+      cp ${onePath} build/${watchEntry}
+      chmod -R u+w build
+      cd build
+
+      ${expandLocalFileTargets { inherit sourceDir; only = watchEntry; }}
+
+      cat > entangled.toml << 'TOML'
+      version = "2.0"
+      watch_list = ["${watchEntry}"]
+      annotation = "standard"
+
+      ${config.defaultEntangledLanguages}
+      TOML
+
+      rm -f .entangled/filedb.json
+      entangled tangle --force
+      ${lib.optionalString stripGeneratedMarkers stripEntangledMarkers}
+      ${installTargets}
+    '';
+```
+
+## tanglePerFile
+`tanglePerFile` fans out `tangleOneFile` across every literate source found by `enumerateLiterateFiles`, then merges the per-file `$out` trees into one store path via a copy-based `runCommand` (not `symlinkJoin`). Copying is load-bearing: consumer modules frequently use relative imports like `./SIBLING_DIR`, and symlinked merges cause Nix to resolve those imports through the symlink into the per-file output where the sibling doesn't exist. Copying produces one real directory with all tangled files side-by-side, so relative imports resolve correctly. Edits to one `.lit.mdx` still only invalidate that per-file derivation; the merge step rebuilds but is cheap (just `cp`). The `passthru.perFile` attribute exposes the individual per-file derivations for downstream tools that want to consume just one slice.
+```{.nix file=lib/pipeline.nix}
+  tanglePerFile = {
+    src,
+    sourceDir,
+    pkgs,
+    stripGeneratedMarkers ? true,
+    name ? "tangled"
+  }:
+    let
+      files = enumerateLiterateFiles { inherit src sourceDir; };
+      perFileDrvs = map (relPath: tangleOneFile {
+        inherit src sourceDir relPath pkgs stripGeneratedMarkers;
+      }) files;
+      merged = pkgs.runCommand name {
+        perFilePaths = perFileDrvs;
+      } ''
+        mkdir -p $out
+        for p in $perFilePaths; do
+          cp -rL --no-preserve=mode "$p"/. "$out"/
+          chmod -R u+w "$out"
+        done
+      '';
+    in merged // { passthru = (merged.passthru or {}) // { perFile = perFileDrvs; inherit files; }; };
+```
+
+## buildWebWiki
+Produces a deployable directory from literate sources, resolving `[[wiki links]]` to relative markdown links for GitHub Pages or any static host.
+```{.nix file=lib/pipeline.nix}
+  buildWebWiki = {
+    src,
+    pkgs,
+    name ? "${config.name}-docs",
+    litSourceDir ? ".english.lit.md"
+  }:
+    pkgs.runCommand name {
+      nativeBuildInputs = [ pkgs.python3 ];
+    } ''
+      mkdir -p $out
+      cp -r ${src}/${litSourceDir}/. $out/
+      chmod -R u+w $out
+      python3 - <<'WIKI'
+import os, re
+
+docs = os.environ["out"]
+pages = {}
+
+for root, _, files in os.walk(docs):
+    for name in files:
+        if not (name.endswith(".lit.mdx") or name.endswith(".lit.md")):
+            continue
+        rel = os.path.relpath(os.path.join(root, name), docs)
+        key = name.replace(".lit.mdx", "").replace(".lit.md", "").lower()
+        pages[key] = rel
+        with open(os.path.join(root, name)) as f:
+            for line in f:
+                if line.startswith("title:"):
+                    pages[line.split(":", 1)[1].strip().lower()] = rel
+                    break
+                if line == "---\n" and key in pages:
+                    break
+        dir_key = os.path.relpath(os.path.join(root, name), docs).replace(".lit.mdx", "").replace(".lit.md", "").lower()
+        pages[dir_key] = rel
+
+for root, _, files in os.walk(docs):
+    for name in files:
+        if not (name.endswith(".lit.mdx") or name.endswith(".lit.md")):
+            continue
+        path = os.path.join(root, name)
+        with open(path) as f:
+            content = f.read()
+        def resolve(m):
+            text = m.group(1)
+            key = text.lower().strip()
+            if key in pages:
+                target = os.path.relpath(os.path.join(docs, pages[key]), root)
+                return f"[{text}]({target})"
+            return f"[{text}](#{key.replace(' ', '-')})"
+        modified = re.sub(r"\[\[([^\]]+)\]\]", resolve, content)
+        if modified != content:
+            with open(path, "w") as f:
+                f.write(modified)
+
+count = len(set(pages.values()))
+print(f"[literate-state-machine-wiki] Wiki: {count} pages, links resolved")
+WIKI
+    '';
+}
+```

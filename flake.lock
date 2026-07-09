@@ -29,15 +29,16 @@
         "repl-session_flake": "repl-session_flake"
       },
       "locked": {
-        "lastModified": 1774352654,
-        "narHash": "sha256-s4xTF2hWIcrpvulvHPKKtUg9c0h9+sWzSdzH5kQxSR0=",
+        "lastModified": 1777925022,
+        "narHash": "sha256-u3+jbFBkf9uHdPvXX1Zm8Y78ocbiDDeBY2N0vu+9V+E=",
         "owner": "zitongcharliedeng",
         "repo": "entangled",
-        "rev": "c4ff4b193251ea356ae17eebed93d5116254aa26",
+        "rev": "5107792de19e0a3e3c2094637117384b47e02f20",
         "type": "github"
       },
       "original": {
         "owner": "zitongcharliedeng",
+        "ref": "dev",
         "repo": "entangled",
         "type": "github"
       }
@@ -182,11 +183,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1773909723,
-        "narHash": "sha256-HmcZQ/hMPHR22Ri/6Sl7Z0B5J8nZa9bRnZJtDFInM7I=",
+        "lastModified": 1776715674,
+        "narHash": "sha256-Gs1VnEkCkkRZxJQAC/Dhz0Jbfi22mFXChbtNg9w/Ybg=",
         "owner": "pyproject-nix",
         "repo": "pyproject.nix",
-        "rev": "d37dcf34ac7194eac4b0d10520d01298c434267d",
+        "rev": "69f57f27e52a87c54e28138a75ec741cd46663c9",
         "type": "github"
       },
       "original": {

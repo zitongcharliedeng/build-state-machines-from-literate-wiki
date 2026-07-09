@@ -1,5 +1,4 @@
 ---
-title: Nix DevShell Module
 description: mkDevShell — the reusable development environment factory that every literate-state-machine-wiki consumer imports
 tags: [nix, devshell, module, mkShell]
 ---
@@ -12,9 +11,9 @@ This module takes `{ lib, config }` where `config` is the attrset produced by [[
 
 ## Why auto-tangle on shell entry?
 
-The canonical literate-state-machine-wiki workflow is: edit `.lit.mdx`, run `tangle`, read generated output. Without auto-tangle, a developer entering the shell after a `git pull` will have stale generated files with no indication anything is wrong. Auto-tangle on entry makes the shell self-healing: generated files always reflect the current literate sources before any `bun run` or `tsc` invocation can see them.
+The canonical literate-state-machine-wiki workflow is: edit `.lit.md`, run `tangle`, read generated output. Without auto-tangle, a developer entering the shell after a `git pull` will have stale generated files with no indication anything is wrong. Auto-tangle on entry makes the shell self-healing: generated files always reflect the current literate sources before any `bun run` or `tsc` invocation can see them.
 
-The `sourceGlobs` parameter controls whether auto-tangle fires. An empty list means "always tangle." A non-empty list uses `compgen -G` to check whether any matching files exist — if none do, the project has no literate sources and the shell skips the tangle step silently. This handles mono-repos where only some sub-packages are literate.
+The `sourceGlobs` parameter controls whether auto-tangle fires. An empty list means "always tangle." A non-empty list uses `compgen -G` to check whether any matching files exist — if none do, the project has no literate sources and the shell skips the tangle step silently. This handles mono-repos where only some sub-packages are literate. The default globs are derived from `config.sourceDirCandidates`, so every conventional literate directory name triggers auto-tangle without configuration.
 
 ## Why pass config rather than hardcode the helpers?
 
@@ -30,7 +29,9 @@ Three layers compose in order:
 
 The caller's `shellHook` appends after all three layers, so consumer-specific messages and setup always run last.
 
-```{.nix file=devshell.nix as-a-real-non-nix-store-file="flake.nix imports this module"}
+The hook also wraps `nix` itself with a soft nudge: bare `nix build` without `--no-link` prints a one-line hint pointing at the `build` wrapper, because a `./result` symlink defeats the store-only invariant. Not a ban — a wall at the wrong layer is brittle; hard prevention of tracked artifacts belongs at commit time via `install-hooks`.
+
+```{.nix file=lib/devshell.nix}
 { lib, config }:
 {
   mkDevShell = {
@@ -38,7 +39,7 @@ The caller's `shellHook` appends after all three layers, so consumer-specific me
     basePackages ? [ (config.nodejsFor pkgs) (config.pythonFor pkgs) ],
     extraPackages ? [ ],
     env ? { },
-    sourceGlobs ? [ "literate/*.lit.md" "literate/**/*.lit.md" ],
+    sourceGlobs ? lib.concatMap (d: [ "${d}/*.lit.md" "${d}/**/*.lit.md" "${d}/*.lit.mdx" "${d}/**/*.lit.mdx" ]) config.sourceDirCandidates,
     tangleCommand ? null,
     shellHook ? ""
   }:
@@ -54,14 +55,24 @@ The caller's `shellHook` appends after all three layers, so consumer-specific me
     in pkgs.mkShell {
       packages = [ (config.entangledFor pkgs) ] ++ basePackages ++ extraPackages;
       shellHook = ''
+        build() { command nix build --no-link --print-out-paths "$@"; }
+        export -f build
+        nix() {
+          if [ "$1" = "build" ] && [[ " $* " != *" --no-link "* ]]; then
+            echo "[${config.name}] hint: 'build' (wraps --no-link) avoids creating ./result. Proceeding anyway." >&2
+          fi
+          command nix "$@"
+        }
+        export -f nix
         ${envExports}
-        echo "[literate-state-machine-wiki] entangled: $(entangled --version 2>/dev/null || echo 'NOT FOUND')"
+        echo "[${config.name}] entangled: $(entangled --version 2>/dev/null || echo 'NOT FOUND')"
+        echo "[${config.name}] tangle & build: use 'build' (wraps --no-link --print-out-paths)."
         ${lib.optionalString (tangleCommand != null) ''
           if ${autoTangleCondition}; then
-            echo "[literate-state-machine-wiki] Auto-tangling literate source..."
+            echo "[${config.name}] Auto-tangling literate source..."
             ${tangleCommand}
           else
-            echo "[literate-state-machine-wiki] No literate source matched configured globs"
+            echo "[${config.name}] No literate source matched configured globs"
           fi
         ''}
         ${shellHook}
